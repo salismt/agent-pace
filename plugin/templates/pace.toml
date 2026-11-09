@@ -1,0 +1,20 @@
+# pace.toml: owner-only. Agents cannot edit this file or existing checks in claims/checks/.
+# Delete this file and pace goes inert in this project.
+
+[pace]
+mode = "observe"   # observe: log what would block to .pace/log.jsonl. enforce: block.
+word_cap = 150     # max words in the agent's final reply. 0 turns the cap off.
+
+# One [[claim]] per promise the system must keep true for someone outside the code.
+# The check for claim <id> is the file claims/checks/<id>.sh or <id>.py, run from the project root.
+# Exit 0 = holds, non-zero = continuity break. No file yet = "uncompiled".
+# cosign: someone who must agree to the claim, for example a domain expert.
+
+# [[claim]]
+# id = "C1"
+# said = "We never store card numbers."
+# to = "customers, PCI assessor"
+# since = "2026-11-09"
+# cosign = ""
+# with claims/checks/C1.sh containing, for example:
+#   ! grep -rniE "card_?number" --include='*.sql' migrations/ || { echo "card number column in a migration"; exit 1; }

@@ -1,0 +1,14 @@
+{
+  "name": "agent-pace",
+  "owner": {
+    "name": "salismt",
+    "url": "https://github.com/salismt"
+  },
+  "plugins": [
+    {
+      "name": "agent-pace",
+      "source": "./plugin",
+      "description": "Claims ledger, reply word cap and comprehension gate. Inert without pace.toml."
+    }
+  ]
+}

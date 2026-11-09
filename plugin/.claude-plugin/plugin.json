@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "agent-pace",
+  "version": "0.1.0",
+  "description": "Pace your agents: a claims ledger that interrupts only on a continuity break, a reply word cap, and a comprehension gate. Inert in any project without pace.toml; starts in observe mode.",
+  "author": {
+    "name": "salismt",
+    "url": "https://github.com/salismt"
+  },
+  "homepage": "https://github.com/salismt/agent-pace",
+  "repository": "https://github.com/salismt/agent-pace",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "hooks",
+    "code-review",
+    "comprehension",
+    "guardrails"
+  ]
+}
