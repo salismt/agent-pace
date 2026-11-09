@@ -29,6 +29,8 @@ WRITE = re.compile(
     r"|open\([^)]*(pace\.toml|claims/checks)[^)]*['\"][wax+]")
 NO_VERIFY = re.compile(r"\bgit\s+commit\b[^|;&]*(--no-verify|\s-\w*n)")
 SHELL_TOOLS = {"Bash", "Shell", "bash", "exec", "run_shell_command", "run_commands"}  # Claude/Codex, Cursor, Copilot, Devin, Gemini, Cline
+SHELL_NAME = re.compile(r"bash|shell|exec|terminal|command|run_", re.I)  # unknown harnesses: name looks like a shell
+PATH_KEYS = ("file_path", "filePath", "notebook_path", "path", "file", "filename", "target_file")
 PATCH_FILE = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)  # Codex apply_patch
 # ponytail: regex guard on Bash. A determined script can still write; the git history of pace.toml is the backstop.
 CHECK_TIMEOUT = 120
@@ -39,7 +41,7 @@ RFC2119 = re.compile(r"\b(MUST(?: NOT)?|SHALL(?: NOT)?|REQUIRED|NON-NEGOTIABLE|R
 WEAK = re.compile(r"\b(must|always|only|required to|mandatory)\b", re.I)
 DOC_EXT = {".md", ".mdx", ".txt", ".rst", ".adoc"}
 SKIP_DIRS = {"node_modules", "vendor", "dist", "build", ".git", ".agents", ".claude", ".cursor", ".codex",
-             ".gemini", ".devin", ".cline", ".pace", "walkthroughs"}
+             ".gemini", ".devin", ".cline", ".pi", ".hermes", ".openclaw", ".dsh", ".pace", "walkthroughs"}
 SPEC_SOURCES = [  # (fnmatch glob, label): where spec-driven tools keep requirements (their docs, Nov 2026); listed first
     ("openspec/specs/*.md", "openspec"), ("openspec/changes/*.md", "openspec"),
     (".specify/memory/constitution.md", "spec-kit"), ("specs/*/spec.md", "spec-kit"), ("specs/*/plan.md", "spec-kit"),
@@ -168,23 +170,26 @@ def last_line(text):
 
 
 def tool_call(ev):
-    """-> ("shell", command, []) or ("edit", "", [paths]) from any supported hook payload."""
-    tool = ev.get("tool_name") or ev.get("toolName") or ""
-    inp = ev.get("tool_input") or ev.get("toolArgs") or {}
+    """-> ("shell", command, []) or ("edit", "", [paths]) from any hook payload: the known dialects, or the
+    generic one in docs/agents/any-harness.md: {"tool": "...", "command": "..."} or {"tool": "...", "path": "..."}."""
+    tool = str(ev.get("tool_name") or ev.get("toolName") or ev.get("tool") or "")
+    inp = next((ev[k] for k in ("tool_input", "toolArgs", "args", "arguments", "input", "params") if k in ev), ev)
     if isinstance(inp, str):
         try:
             inp = json.loads(inp)
         except ValueError:
             inp = {}
-    if not tool and isinstance(ev.get("command"), str):  # Cursor beforeShellExecution
-        return "shell", ev["command"], []
-    cmd = inp.get("command", "") if isinstance(inp, dict) else ""
-    if tool == "apply_patch":
-        return "edit", "", [a or b for a, b in PATCH_FILE.findall(cmd)]
-    if tool in SHELL_TOOLS:
+    inp = inp if isinstance(inp, dict) else {}
+    cmd = inp.get("command") or inp.get("cmd") or inp.get("code") or ""  # code: Hermes execute_code
+    cmd = " ".join(map(str, cmd)) if isinstance(cmd, list) else str(cmd)  # some harnesses pass argv
+    patch = str(inp.get("patch") or inp.get("input") or cmd)  # Hermes patch, OpenClaw input, Codex command
+    if "*** Begin Patch" in patch or tool == "apply_patch":  # Codex-style patch, from any harness
+        return "edit", "", [a or b for a, b in PATCH_FILE.findall(patch)]
+    paths = [inp[k] for k in PATH_KEYS if isinstance(inp.get(k), str)]
+    paths += [p for p in inp.get("paths") or [] if isinstance(p, str)]
+    if cmd and (tool in SHELL_TOOLS or SHELL_NAME.search(tool) or not paths):
         return "shell", cmd, []
-    f = isinstance(inp, dict) and (inp.get("file_path") or inp.get("notebook_path") or inp.get("filePath") or inp.get("path"))
-    return "edit", "", [f] if f else []
+    return "edit", "", paths
 
 
 def guard(r, cfg, claims, ev):
@@ -248,9 +253,10 @@ def reply_words(transcript):
 
 def stop(r, cfg, ev):
     cap = int(cfg.get("word_cap") or 0)
-    if not cap or ev.get("stop_hook_active") or ev.get("loop_count"):  # send back once only
+    extra = ev.get("extra") if isinstance(ev.get("extra"), dict) else {}  # Hermes pre_verify
+    if not cap or ev.get("stop_hook_active") or ev.get("loop_count") or extra.get("attempt"):  # send back once only
         return 0
-    text = ev.get("last_assistant_message") or ev.get("prompt_response")  # Codex, Gemini
+    text = ev.get("last_assistant_message") or ev.get("prompt_response") or extra.get("final_response")  # Codex, Gemini, Hermes
     path = ev.get("transcript_path") or ev.get("transcriptPath")
     if isinstance(text, str):
         n = len(text.split())
@@ -325,19 +331,21 @@ def cmd_pre_commit(r, led):
     return 1 if cfg["mode"] == "enforce" else 0
 
 
-def session(r, cfg, claims):
+def session(r, cfg, claims, ev=None):
     """SessionStart: give a new or resumed agent the promises before it changes anything."""
-    if not claims:
+    ev = ev or {}
+    hermes = ev.get("hook_event_name") == "pre_llm_call"  # Hermes: context goes in {"context": ...}, first turn only
+    if not claims or (hermes and not (ev.get("extra") or {}).get("is_first_turn")):
         return 0
     lines = [f'- {c["id"]}: "{c.get("said", "")}" (to {c.get("to", "?")})'
              + (f' [known break: {c["known_break"]}]' if c.get("known_break") else "") for c in claims]
     logf = r / ".pace" / "log.jsonl"
     brk = [json.loads(l) for l in open(logf) if '"continuity_break"' in l] if logf.exists() else []
     last = f'\nLast continuity break: {", ".join(brk[-1]["claims"])} at {brk[-1]["ts"]}.' if brk else ""
-    print(f'agent-pace is on in this project (mode: {cfg["mode"]}). Every commit must keep these promises from pace.toml:\n'
-          + "\n".join(lines) +
-          "\npace.toml and files in claims/checks/ are owner-only. If a check fails, stop and tell the user "
-          "which change broke which promise." + last)
+    text = (f'agent-pace is on in this project (mode: {cfg["mode"]}). Every commit must keep these promises from '
+            'pace.toml:\n' + "\n".join(lines) + "\npace.toml and files in claims/checks/ are owner-only. If a check "
+            "fails, stop and tell the user which change broke which promise." + last)
+    print(json.dumps({"context": text}) if hermes else text)
     return 0
 
 
@@ -474,7 +482,7 @@ def main():
             led = load(r)
             if not led:
                 return 0
-            return guard(r, *led, ev) if sub == "guard" else stop(r, led[0], ev) if sub == "stop" else session(r, *led)
+            return guard(r, *led, ev) if sub == "guard" else stop(r, led[0], ev) if sub == "stop" else session(r, *led, ev)
         except Exception as e:  # fail open: a broken hook must never stop work
             try:
                 log(r or project_root(), event="hook_error", hook=sub, error=repr(e)[:300])

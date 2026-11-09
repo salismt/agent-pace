@@ -1,6 +1,6 @@
 # OpenCode, Amp, Cline, and any agent that uses git
 
-These agents extend through JavaScript plugins (OpenCode, Amp) or file hooks that abort the whole run (Cline), not through the shell hooks `pace.py` speaks. For them, pace enforces the ledger where every agent ends up anyway: `git commit`.
+These agents extend through JavaScript plugins (OpenCode, Amp) or file hooks that abort the whole run (Cline), not through the shell hooks `pace.py` speaks. For them, pace enforces the ledger where every agent ends up anyway: `git commit`. To go further, a JavaScript plugin can call `pace.py` before each tool call: see [any-harness.md](any-harness.md) for the contract and a template.
 
 What you get: the ledger is replayed on every commit, plus the skills. What you don't get: owner-only protection for `pace.toml` and the word cap.
 

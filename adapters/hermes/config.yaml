@@ -1,0 +1,19 @@
+# agent-pace for Hermes Agent: merge into ~/.hermes/config.yaml (or your profile's config.yaml).
+# Each hook finds the git root of Hermes's working directory and does nothing there without .agents/scripts/pace.py.
+hooks:
+  pre_tool_call:
+    - matcher: "terminal|write_file|patch|execute_code"
+      command: >-
+        sh -c 'r=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; p="$r/.agents/scripts/pace.py";
+        [ -f "$p" ] || exit 0; exec "$(command -v python3 || command -v python)" "$p" guard'
+      timeout: 25
+  pre_verify:
+    - command: >-
+        sh -c 'r=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; p="$r/.agents/scripts/pace.py";
+        [ -f "$p" ] || exit 0; exec "$(command -v python3 || command -v python)" "$p" stop'
+      timeout: 20
+  pre_llm_call:
+    - command: >-
+        sh -c 'r=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; p="$r/.agents/scripts/pace.py";
+        [ -f "$p" ] || exit 0; exec "$(command -v python3 || command -v python)" "$p" session'
+      timeout: 20

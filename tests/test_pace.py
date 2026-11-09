@@ -113,6 +113,28 @@ assert json.loads(out)["decision"] == "block", out
 code, out, _ = run(r, ["stop"], {"hook_event_name": "AfterAgent", "prompt_response": "word " * 30})           # Gemini
 assert json.loads(out)["decision"] == "deny", out
 assert run(r, ["stop"], {"hook_event_name": "stop", "loop_count": 1, "last_assistant_message": "word " * 30})[1] == ""  # Cursor, once
+# Hermes (shell hooks): terminal, write_file, patch (path or V4A patch text), execute_code; pre_verify; pre_llm_call
+assert run(r, ["guard"], {"tool_name": "terminal", "tool_input": {"command": "git commit -m x"}})[0] == 2
+assert run(r, ["guard"], {"tool_name": "write_file", "tool_input": {"path": "pace.toml", "content": "x"}})[0] == 2
+assert run(r, ["guard"], {"tool_name": "patch", "tool_input": {"path": "claims/checks/C2.sh", "old_string": "a"}})[0] == 2
+assert run(r, ["guard"], {"tool_name": "patch", "tool_input": {"mode": "patch", "patch": patch}})[0] == 2
+assert run(r, ["guard"], {"tool_name": "execute_code", "tool_input": {"code": "open('pace.toml', 'w').write('')"}})[0] == 2
+code, out, _ = run(r, ["stop"], {"hook_event_name": "pre_verify", "extra": {"final_response": "word " * 30, "attempt": 0}})
+assert json.loads(out)["decision"] == "block", out
+assert run(r, ["stop"], {"hook_event_name": "pre_verify", "extra": {"final_response": "word " * 30, "attempt": 1}})[1] == ""
+assert "C2" in json.loads(run(r, ["session"], {"hook_event_name": "pre_llm_call", "extra": {"is_first_turn": True}})[1])["context"]
+assert run(r, ["session"], {"hook_event_name": "pre_llm_call", "extra": {"is_first_turn": False}})[1] == ""
+# Pi and dsh (JS adapters pass the tool's raw name and arguments); OpenClaw apply_patch carries the patch in input
+assert run(r, ["guard"], {"tool_name": "edit", "tool_input": {"path": "pace.toml", "edits": [{"oldText": "a", "newText": "b"}]}})[0] == 2
+assert run(r, ["guard"], {"tool_name": "write", "tool_input": {"file_path": "claims/checks/C2.sh"}})[0] == 2
+assert run(r, ["guard"], {"tool_name": "str_replace_editor", "tool_input": {"command": "create", "path": "pace.toml"}})[0] == 2
+assert run(r, ["guard"], {"tool_name": "str_replace_editor", "tool_input": {"command": "view", "path": "src/a.py"}})[0] == 0
+assert run(r, ["guard"], {"tool_name": "apply_patch", "tool_input": {"input": patch}})[0] == 2
+# the generic contract (docs/agents/any-harness.md): any tool name, top-level fields
+assert run(r, ["guard"], {"tool": "run_in_sandbox", "command": "git commit -m x"})[0] == 2
+assert run(r, ["guard"], {"tool": "file_editor", "path": "pace.toml"})[0] == 2
+assert run(r, ["guard"], {"tool": "file_editor", "path": "src/a.py"})[0] == 0
+assert run(r, ["guard"], {"tool": "shell", "command": ["git", "commit", "-m", "x"]})[0] == 2  # argv form
 # root found by walking up from a subfolder, without CLAUDE_PROJECT_DIR (Codex passes cwd)
 (r / ".git").mkdir(exist_ok=True); (r / "src").mkdir(exist_ok=True)
 assert run(r / "src", ["guard"], {"tool_name": "Bash", "cwd": str(r / "src"), "tool_input": {"command": "rm ../pace.toml"}},

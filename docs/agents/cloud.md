@@ -7,7 +7,7 @@ agent-pace runs wherever the agent runs: your laptop, a remote dev box, a CI run
 1. **Commit the files; don't rely on per-machine installs.** Cloud sandboxes start from a fresh clone of your repo. They don't see your `~/.claude`, `~/.codex` or `~/.cursor`, and Claude Code on the web doesn't install plugins. So commit:
    - `pace.toml` and `claims/checks/`
    - `.agents/` (from the [common setup](README.md#common-setup-every-agent-except-claude-code))
-   - your agent's hook file: `.claude/settings.json`, `.codex/hooks.json`, `.github/hooks/agent-pace.json`, `.cursor/hooks.json` or `.gemini/settings.json`
+   - your agent's hook file: `.claude/settings.json`, `.codex/hooks.json`, `.github/hooks/agent-pace.json`, `.cursor/hooks.json` `.gemini/settings.json` or `.pi/extensions/pace.ts`
 2. **Install the git hook in the environment's setup script.** Git hooks live in `.git/hooks`, which is never committed, so every fresh clone starts without one. Add this line to the setup script:
    ```bash
    python3 .agents/scripts/pace.py install-git-hook
@@ -30,6 +30,7 @@ pace needs Python 3.8 or newer and makes no network calls, so a sandbox with int
 | **Cursor cloud agents** | `.cursor/hooks.json` (not `~/.cursor`) | `install` in `.cursor/environment.json` | Use the block in [cursor.md](cursor.md#cursor-cloud-agents). Session-start hooks don't run there |
 | **Gemini CLI in GitHub Actions** | Project `.gemini/settings.json` hooks | Workflow steps | Don't use the action's `settings` input; it overwrites `.gemini/settings.json` and drops the hooks |
 | **Devin cloud sessions** | Hooks through Devin plugins | `initialize` in `.devin/blueprint.yaml` | Use `install-git-hook` in `initialize`. Whether plain repo hook files run in cloud sessions isn't documented |
+| **Self-hosted on a server** (Hermes or OpenClaw gateway, Pi, DeepSeek Harness) | Same as on your PC | Your server's provisioning | Hermes, OpenClaw and dsh read hooks or plugins from the user's home folder, not the repo: add their setup from [hermes.md](hermes.md), [openclaw.md](openclaw.md) or [deepseek-harness.md](deepseek-harness.md) to the image. Unattended Hermes needs `HERMES_ACCEPT_HOOKS=1`; unattended Pi needs `--approve` |
 
 Sources: each vendor's docs, November 2026. Live-tested so far: Claude Code and Codex CLI on a local PC, and the git hook plus the hook payloads in clean Linux containers on Python 3.8 and 3.12. The vendor cloud products themselves have not been tested yet.
 

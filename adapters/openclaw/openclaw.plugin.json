@@ -1,0 +1,6 @@
+{
+  "id": "agent-pace",
+  "name": "agent-pace",
+  "description": "Replays the claims ledger (pace.toml) before commits and protects owner-only files.",
+  "configSchema": { "type": "object", "additionalProperties": false }
+}

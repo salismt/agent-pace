@@ -66,7 +66,7 @@ claude plugin install agent-pace@agent-pace --scope project
 
 Then tell Claude: **"turn on pace here"**. It copies a starting `pace.toml` into the project root, in observe mode. Always pass `--scope project`; the default is `user`, which means every project you open.
 
-**Other agents:** copy three folders into `.agents/` and add one hook config. See the guide for yours:
+**Other agents:** copy three folders into `.agents/` and add one hook config, or a small plugin for agents that extend through code. See the guide for yours:
 
 | Agent | Guide | Status |
 |---|---|---|
@@ -76,9 +76,16 @@ Then tell Claude: **"turn on pace here"**. It copies a starting `pace.toml` into
 | Cursor | [docs/agents/cursor.md](docs/agents/cursor.md) | from docs |
 | GitHub Copilot CLI | [docs/agents/copilot-cli.md](docs/agents/copilot-cli.md) | from docs |
 | Devin (formerly Windsurf) | [docs/agents/devin.md](docs/agents/devin.md) | from docs |
+| Hermes Agent | [docs/agents/hermes.md](docs/agents/hermes.md) | tested live (hook runner) |
+| Pi | [docs/agents/pi.md](docs/agents/pi.md) | tested live (scripted model) |
+| DeepSeek Harness (dsh) | [docs/agents/deepseek-harness.md](docs/agents/deepseek-harness.md) | partly tested |
+| OpenClaw | [docs/agents/openclaw.md](docs/agents/openclaw.md) | from source |
 | OpenCode, Amp, Cline, anything with git | [docs/agents/other-agents.md](docs/agents/other-agents.md) | git hook |
+| Any other harness | [docs/agents/any-harness.md](docs/agents/any-harness.md) | write a 25-line adapter |
 
 What each agent supports: [docs/agents/README.md](docs/agents/README.md).
+
+**Not tied to one agent.** Every integration calls the same `pace.py` with JSON on stdin and reads the exit code (2 blocks, 0 allows). It accepts each harness's own tool names and argument fields, so an adapter only forwards the event. The git pre-commit hook is the floor that works under any agent that commits.
 
 Needs Python 3.8+. No other dependencies, no network calls.
 
