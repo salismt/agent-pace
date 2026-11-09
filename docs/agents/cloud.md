@@ -7,7 +7,7 @@ agent-pace runs wherever the agent runs: your laptop, a remote dev box, a CI run
 1. **Commit the files; don't rely on per-machine installs.** Cloud sandboxes start from a fresh clone of your repo. They don't see your `~/.claude`, `~/.codex` or `~/.cursor`, and Claude Code on the web doesn't install plugins. So commit:
    - `pace.toml` and `claims/checks/`
    - `.agents/` (from the [common setup](README.md#common-setup-every-agent-except-claude-code))
-   - your agent's hook file: `.claude/settings.json`, `.codex/hooks.json`, `.github/hooks/agent-pace.json`, `.cursor/hooks.json` `.gemini/settings.json` or `.pi/extensions/pace.ts`
+   - your agent's hook file: `.claude/settings.json`, `.codex/hooks.json`, `.github/hooks/agent-pace.json`, `.cursor/hooks.json`, `.gemini/settings.json` or `.pi/extensions/pace.ts`
 2. **Install the git hook in the environment's setup script.** Git hooks live in `.git/hooks`, which is never committed, so every fresh clone starts without one. Add this line to the setup script:
    ```bash
    python3 .agents/scripts/pace.py install-git-hook
@@ -64,5 +64,3 @@ Every layer above runs where the agent runs. If an agent can still push without 
 ```yaml
 - run: python3 .agents/scripts/pace.py check
 ```
-
-This is optional. agent-pace doesn't need CI; this just catches whatever got past the agent-side layers.

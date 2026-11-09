@@ -1,6 +1,6 @@
 # agent-pace with your agent
 
-agent-pace is one Python script (`pace.py`) plus three skills. Claude Code installs it as a plugin. Every other agent uses the same files copied into the project, plus a hook config in that agent's own format, or a small plugin from [`adapters/`](../../adapters) for agents that extend through code. Your agent isn't listed? [any-harness.md](any-harness.md) describes the contract and a 25-line adapter template.
+agent-pace is one Python script (`pace.py`) plus three skills. Claude Code installs it as a plugin. Every other agent uses the same files copied into the project, plus a hook config in that agent's own format, or a small plugin from [`adapters/`](../../adapters) for agents that extend through code. If your agent isn't listed, [any-harness.md](any-harness.md) describes the contract and a 25-line adapter template.
 
 | Agent | Guide | Ledger on commit | Owner-only files (edits) | Owner-only files (shell) | Word cap | Skills | Status |
 |---|---|---|---|---|---|---|---|
@@ -48,4 +48,4 @@ For Hermes, Pi, DeepSeek Harness and OpenClaw, also copy the adapters: `cp -R /t
 
 Then add the hook config from your agent's guide. Commit `.agents/` and `pace.toml` so everyone on the repo gets the same checks.
 
-Needs Python 3.8+. Running on a cloud server (Claude Code on the web, Codex cloud, Copilot coding agent, Cursor cloud agents, Devin)? Read [cloud.md](cloud.md) first. pace starts in observe mode: it logs what it would block to `.pace/log.jsonl` and blocks nothing until you set `mode = "enforce"`.
+Needs Python 3.8+. On a cloud server (Claude Code on the web, Codex cloud, Copilot coding agent, Cursor cloud agents, Devin), read [cloud.md](cloud.md) first. pace starts in observe mode: it logs what it would block to `.pace/log.jsonl` and blocks nothing until you set `mode = "enforce"`.

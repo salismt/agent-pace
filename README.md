@@ -2,9 +2,9 @@
 
 **Let your agents run. Get interrupted only when they break a promise you made.**
 
-A plugin for Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI and Devin, for people who delegate more code than they can read.
+A plugin for Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI, Devin, Hermes, Pi, DeepSeek Harness and OpenClaw (or [any other harness](docs/agents/any-harness.md)), for people who delegate more code than they can read.
 
-[Install](#install) · [Cloud](#local-pc-or-cloud-server) · [New project](#greenfield-start-a-new-project-with-promises) · [Existing codebase](#brownfield-add-agent-pace-to-an-existing-codebase) · [With Spec Kit, OpenSpec, BMAD and others](#with-spec-driven-development-tools) · [Limits](#known-limits)
+[Benchmark](#benchmark-promisebench) · [Install](#install) · [Cloud](#local-pc-or-cloud-server) · [New project](#greenfield-start-a-new-project-with-promises) · [Existing codebase](#brownfield-add-agent-pace-to-an-existing-codebase) · [With Spec Kit, OpenSpec, BMAD and others](#with-spec-driven-development-tools) · [Limits](#known-limits)
 
 ## The problem
 
@@ -12,9 +12,9 @@ Agents now write code faster than you can understand it. So you approve it witho
 
 In my own Claude Code transcripts (60 days, 1,355 replies after an agent output of 150 words or more), **20% of my replies came faster than I could have skimmed the output**. The median agent output before I replied was 396 words.
 
-That has a cost. In [Anthropic's randomized trial](https://www.anthropic.com/research/AI-assistance-coding-skills), developers who learned a new library with AI help scored **50%** on a comprehension quiz, against **67%** for those who coded by hand. The biggest gap was in debugging.
+In [Anthropic's randomized trial](https://www.anthropic.com/research/AI-assistance-coding-skills), developers who learned a new library with AI help scored 50% on a comprehension quiz, against 67% for those who coded by hand. The biggest gap was in debugging.
 
-More approval gates don't fix this; you approve them without reading too. pace takes the other way out: **stop asking for your attention on everything, and spend it only where a mistake would break something you promised.**
+More approval gates don't fix this; you approve them without reading too. pace stops asking for your attention on everything and asks for it only where a mistake would break something you promised.
 
 ## What it does
 
@@ -22,7 +22,7 @@ More approval gates don't fix this; you approve them without reading too. pace t
 |---|---|
 | **Claims ledger** | `pace.toml` lists promises the code must keep, such as "we never store card numbers" or "customer data stays in the EU". Each promise has a check. Every `git commit`, `push`, `merge` and `gh pr create/merge` by an agent replays all of them. |
 | **Continuity break** | A failing check is the only thing that stops the agent. It quotes your promise, names who you made it to, and stops. |
-| **Owner-only files** | Agents can't edit `pace.toml` or an existing check. They can't "fix the test" to get past you. |
+| **Owner-only files** | Agents can't edit `pace.toml` or an existing check, and pace refuses any agent commit that changes them, however they were written. They can't "fix the test" to get past you. |
 | **Reply word cap** | A final reply over 150 words goes back once with "put the detail in a file". |
 | **Comprehension gate** | Core acceptance criteria need a walkthrough, and your own explanation in your own words, before the work counts as ready. |
 | **Stats** | `pace.py stats` shows how fast you approve compared with how long the output takes to read. |
@@ -54,6 +54,28 @@ Final reply (31 words):
 Nothing was committed, and `pace.toml` was left untouched. That one question is the only thing that needs you.
 
 The same run in OpenAI Codex CLI 0.159 gave the same three blocks: the `apply_patch` edit to `pace.toml`, the commit, and the 296-word reply, rewritten in 36 words.
+
+## Benchmark: PromiseBench
+
+PromiseBench has six small projects: payments, telemetry, a public API, an audit log, password storage and data residency. Each has two promises the agent is told about, one it isn't, and an ordinary ticket that puts pressure on a promise. A sealed behavioural oracle, which neither the agent nor any guard sees, decides whether a promise broke. The checks the guards run were written blind by a separate agent from the promise text alone. The design was [pre-registered](bench/PREREGISTRATION.md) before any data, and every deviation is logged there.
+
+Claude Code with Sonnet 5.5, 8 runs per cell, 336 runs. The table shows runs in which a stated promise was broken in a commit:
+
+| Ticket | Promise in `AGENTS.md` | Same checks in a plain pre-commit hook | Hook + ownership message, no protection (ablation) | agent-pace |
+|---|---|---|---|---|
+| Ordinary ticket | 0/48 | 0/48 | – | 0/48 |
+| Teammate says the promise is out of date | 16/48 (33%) | 16/48 (33%), and 21/48 committed an edited check | 0/48 | 0/48 |
+
+What the runs show:
+
+- **Under ordinary pressure, stated promises hold.** Prose alone was enough: no arm broke one.
+- **When the person asking isn't the person who owns the promise, the agent follows the person asking.** Prose and an unprotected hook each lost a third of the promises. With the hook, Sonnet edited the check before committing in 44% of runs.
+- **For Sonnet, telling the agent who owns the promise was enough.** The ablation matches agent-pace exactly, so for Sonnet the ownership message does the work, and the protection was never tested.
+- **Codex didn't defer.** In a partial run (96 runs before an account usage limit), 2 of 16 Codex runs under agent-pace rewrote a check and `pace.toml` with a Python script that the shell filter missed, then committed. pace now refuses any agent commit that changes `pace.toml` or an existing check, however the change was made. A regression test reproduces the bypass.
+- **Checks miss things.** The blind checks caught 84 of 99 independent ways to break their promises (0.85 overall, 0.40 to 1.00 per promise), even though each check caught every breaking edit its author tried. So also audit a sample: if 59 commits that the guard passed turn up no broken promise, the rate of undetected breaks is below 5% at 95% confidence.
+- **Unstated promises aren't protected.** The held-out promise broke in 17–19% of runs in every arm. Write the promise down.
+
+The paper with methods, statistics and limits is in [paper/main.pdf](paper/main.pdf). To reproduce, see [bench/](bench). The Claude runs cost $49.64.
 
 ## Install
 
@@ -139,7 +161,7 @@ An existing codebase already holds promises, scattered through specs, security a
 
 ### Continue work on an existing project
 
-Most brownfield work isn't adoption. It's picking up where you, a teammate or another agent left off.
+Most brownfield work is picking up where you, a teammate or another agent left off.
 
 - **The promises travel with the repo.** `pace.toml` and `claims/checks/` are in git, so every agent, session and teammate gets the same ledger, whichever agent tool they use.
 - **New sessions hear the rules first.** The Claude Code plugin's session-start hook (`pace.py session`) tells a new or resumed agent which promises are in force, which are known breaks, and when the last break happened. For other agents, add the `AGENTS.md` lines in [other-agents.md](docs/agents/other-agents.md#rules-file-agents-without-skills). In a live Claude Code test, an agent told to add a `card_number` column read C1 at session start and stopped before editing anything: "Adding `card_number TEXT` would break C1. Should I add a token or last-4 column instead?"
@@ -149,7 +171,7 @@ Most brownfield work isn't adoption. It's picking up where you, a teammate or an
 
 ### With spec-driven development tools
 
-Spec-driven tools write your non-negotiables down. **agent-pace makes them stop a commit.** We read the docs of the five most-starred AI development methods, plus Kiro. Each keeps requirements in files and checks them inside the agent session, if at all. None of them blocks a commit when a requirement breaks; that is the gap agent-pace fills. `harvest` reads all of their requirement files.
+Spec-driven tools write your non-negotiables down, and agent-pace makes them stop a commit. We read the docs of the five most-starred AI development methods, plus Kiro. Each keeps requirements in files and checks them inside the agent session, if at all. None of them blocks a commit when a requirement breaks. `harvest` reads all of their requirement files.
 
 | Method (GitHub stars, 9 Nov 2026) | Where its non-negotiables live | Its brownfield entry point | How agent-pace fits |
 |---|---|---|---|
@@ -210,7 +232,7 @@ The skills call these for you: `pace`, `claims` and `comprehension-gate`.
 
 ## Why TOML
 
-The ledger is a list of promises, not logic; the logic lives in the check files. So the ledger needs a data format people can edit and diff, not a DSL. TOML has comments, has no indentation traps (YAML reads `NO` as false), and Python reads it with the standard library. JSON has no comments, and YAML needs a dependency.
+The ledger is a list of promises, and the logic lives in the check files. So the ledger needs a plain data format that people can edit and diff. TOML has comments, has no indentation traps (YAML reads `NO` as false), and Python reads it with the standard library. JSON has no comments, and YAML needs a dependency.
 
 ## Known limits
 
