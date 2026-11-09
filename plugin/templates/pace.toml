@@ -9,6 +9,7 @@ word_cap = 150     # max words in the agent's final reply. 0 turns the cap off.
 # The check for claim <id> is the file claims/checks/<id>.sh or <id>.py, run from the project root.
 # Exit 0 = holds, non-zero = continuity break. No file yet = "uncompiled".
 # cosign: someone who must agree to the claim, for example a domain expert.
+# known_break = "why, and the ticket": for an existing violation you accept for now. Reported, never blocks.
 
 # [[claim]]
 # id = "C1"

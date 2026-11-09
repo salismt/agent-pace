@@ -7,6 +7,13 @@ description: Use when an agent-built feature must be understood by the user befo
 
 The user accepts a core change only after they can explain it. Throwaway work skips the gate. The script is `scripts/pace.py`, two folders above this skill's base directory.
 
+## 0. No coverage-contract.json yet (existing projects)
+For a change in an existing codebase, write a small `coverage-contract.json` next to the change's spec or task file, with one item per acceptance criterion of this change only:
+```json
+{"acceptance": [{"id": "AC-01", "tier": "core"}, {"id": "AC-02", "tier": "throwaway"}]}
+```
+If a spec-driven tool already numbers the requirements (for example `REQ-3` or a task id), reuse those ids. Never cover the whole legacy codebase: only what this change touches.
+
 ## 1. Tag each acceptance criterion
 In `coverage-contract.json`, add `"tier": "core"` or `"tier": "throwaway"` to every item in `acceptance[]` (each item needs an `id`, for example `AC-03`).
 - **Core:** data model, personal-data flows, core business logic, auth, payments, and anything a `pace.toml` claim touches.

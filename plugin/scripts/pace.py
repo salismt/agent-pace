@@ -6,6 +6,8 @@ and are logged to .pace/log.jsonl. Hooks read the Claude Code, Codex, Gemini CLI
 Cursor, Copilot CLI and Devin payload shapes. Subcommands:
   guard   pre-tool hook (shell commands and file edits)
   stop    end-of-turn hook (word cap)
+  session session-start hook: tells a new or resumed agent which promises are in force
+  harvest [--all] [--limit N]  list promise-like sentences already in the repo's specs and docs
   check   replay the ledger, print one line per claim, exit 1 on a break
   pre-commit  git hook for any agent tool: replay, block only in enforce mode
   gate    --contract coverage-contract.json [--walkthroughs DIR]
@@ -29,6 +31,22 @@ SHELL_TOOLS = {"Bash", "Shell", "bash", "exec", "run_shell_command", "run_comman
 PATCH_FILE = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)  # Codex apply_patch
 # ponytail: regex guard on Bash. A determined script can still write; the git history of pace.toml is the backstop.
 CHECK_TIMEOUT = 120
+# harvest: strong promise wording, then weaker wording shown only with --all
+STRONG = re.compile(r"\b(never|must not|shall not|shall|guarantee[sd]?|under no circumstances|at no time|"
+                    r"(?:is|are) not (?:allowed|permitted)|no \w+(?: \w+)? without)\b", re.I)
+RFC2119 = re.compile(r"\b(MUST(?: NOT)?|SHALL(?: NOT)?|REQUIRED|NON-NEGOTIABLE|RULE-\d+)\b")  # spec-tool normative words
+WEAK = re.compile(r"\b(must|always|only|required to|mandatory)\b", re.I)
+DOC_EXT = {".md", ".mdx", ".txt", ".rst", ".adoc"}
+SKIP_DIRS = {"node_modules", "vendor", "dist", "build", ".git", ".agents", ".claude", ".cursor", ".codex",
+             ".gemini", ".devin", ".cline", ".pace", "walkthroughs"}
+SPEC_SOURCES = [  # (fnmatch glob, label): where spec-driven tools keep requirements (their docs, Nov 2026); listed first
+    ("openspec/specs/*.md", "openspec"), ("openspec/changes/*.md", "openspec"),
+    (".specify/memory/constitution.md", "spec-kit"), ("specs/*/spec.md", "spec-kit"), ("specs/*/plan.md", "spec-kit"),
+    (".kiro/specs/*.md", "kiro"), (".kiro/steering/*.md", "kiro"),
+    (".planning/REQUIREMENTS.md", "gsd"), (".planning/PROJECT.md", "gsd"),
+    ("_bmad-output/*.md", "bmad"),
+    ("docs/superpowers/specs/*.md", "superpowers"), ("docs/superpowers/plans/*.md", "superpowers"),
+]
 
 
 def project_root(ev=None):
@@ -75,7 +93,8 @@ def check_cmd(r, c):
 
 
 def replay(r, claims):
-    """-> [(claim, status, output tail)], status in holds | BREAK | error | uncompiled."""
+    """-> [(claim, status, output tail)], status in holds | BREAK | known-break | error | uncompiled.
+    known-break: the owner marked an existing violation with known_break = "why"; reported, never blocks."""
     out = []
     for c in claims:
         cmd = check_cmd(r, c)
@@ -84,7 +103,8 @@ def replay(r, claims):
             continue
         try:
             p = subprocess.run(cmd, cwd=r, capture_output=True, text=True, timeout=CHECK_TIMEOUT)
-            out.append((c, "holds" if p.returncode == 0 else "BREAK", (p.stdout + p.stderr).strip()[-400:]))
+            status = "holds" if p.returncode == 0 else "known-break" if c.get("known_break") else "BREAK"
+            out.append((c, status, (p.stdout + p.stderr).strip()[-400:]))
         except subprocess.TimeoutExpired:
             out.append((c, "error", f"check timed out after {CHECK_TIMEOUT} s"))
     return out
@@ -201,7 +221,10 @@ def cmd_check(r, led):
         return 0
     res = replay(r, led[1])
     for c, s, o in res:
-        print(f'{c["id"]:<6} {s:<11} {c.get("said", "")}' + (f"\n       {last_line(o)}" if s in ("BREAK", "error") else ""))
+        note = (f"\n       {last_line(o)}" if s in ("BREAK", "error")
+                else f"\n       known break: {c['known_break']}" if s == "known-break"
+                else "\n       fixed: the owner can remove known_break" if s == "holds" and c.get("known_break") else "")
+        print(f'{c["id"]:<6} {s:<11} {c.get("said", "")}' + note)
     print(f'mode: {led[0]["mode"]}')
     return 1 if any(s == "BREAK" for _, s, _ in res) else 0
 
@@ -217,6 +240,62 @@ def cmd_pre_commit(r, led):
     log(r, event="continuity_break", mode=cfg["mode"], claims=[c["id"] for c, _, _ in breaks], command="git pre-commit")
     print(break_message(breaks) + ("" if cfg["mode"] == "enforce" else "\n(observe mode: commit allowed)"), file=sys.stderr)
     return 1 if cfg["mode"] == "enforce" else 0
+
+
+def session(r, cfg, claims):
+    """SessionStart: give a new or resumed agent the promises before it changes anything."""
+    if not claims:
+        return 0
+    lines = [f'- {c["id"]}: "{c.get("said", "")}" (to {c.get("to", "?")})'
+             + (f' [known break: {c["known_break"]}]' if c.get("known_break") else "") for c in claims]
+    logf = r / ".pace" / "log.jsonl"
+    brk = [json.loads(l) for l in open(logf) if '"continuity_break"' in l] if logf.exists() else []
+    last = f'\nLast continuity break: {", ".join(brk[-1]["claims"])} at {brk[-1]["ts"]}.' if brk else ""
+    print(f'agent-pace is on in this project (mode: {cfg["mode"]}). Every commit must keep these promises from pace.toml:\n'
+          + "\n".join(lines) +
+          "\npace.toml and files in claims/checks/ are owner-only. If a check fails, stop and tell the user "
+          "which change broke which promise." + last)
+    return 0
+
+
+def repo_files(r):
+    try:
+        out = subprocess.run(["git", "ls-files"], cwd=r, capture_output=True, text=True, timeout=30)
+        if out.returncode == 0:
+            return [r / f for f in out.stdout.splitlines()]
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return [p for p in r.rglob("*") if p.is_file()]
+
+
+def cmd_harvest(r, led, show_all, limit):
+    """Brownfield: list sentences in specs and docs that read like promises, specs first. Writes nothing."""
+    from fnmatch import fnmatch
+    said = [c.get("said", "").lower() for c in (led[1] if led else []) if c.get("said")]
+    found = []
+    for f in repo_files(r):
+        rel = f.relative_to(r).as_posix()
+        if f.suffix.lower() not in DOC_EXT or SKIP_DIRS & set(rel.split("/")[:-1]) or "changelog" in f.name.lower():
+            continue
+        label = next((lab for g, lab in SPEC_SOURCES if fnmatch(rel, g)), "doc")
+        fence = False
+        for i, line in enumerate(open(f, errors="ignore"), 1):
+            if line.lstrip().startswith(("```", "~~~")):
+                fence = not fence
+            text = line.strip().lstrip("-*>#0123456789. ").replace("**", "").strip()
+            if fence or len(text) < 12 or "SUB-SKILL" in text:  # skip agent-workflow boilerplate
+                continue
+            strength = 2 if STRONG.search(text) or RFC2119.search(text) else 1 if show_all and WEAK.search(text) else 0
+            if strength:
+                known = any(s and s in text.lower() for s in said)
+                found.append((label == "doc", -strength, rel, i, label, text[:180], known))
+    found.sort()
+    for _, _, rel, i, label, text, known in found[:limit]:
+        print(f"{rel}:{i}  [{label}]{'  (in ledger)' if known else ''}\n    {text}")
+    files = len({x[2] for x in found})
+    print(f"\n{len(found)} candidate sentences in {files} files" + (f", showing {limit}" if len(found) > limit else "")
+          + ". Keep only promises made to someone outside the code; the claims skill turns each one into a check.")
+    return 0
 
 
 def cmd_gate(contract, wdir):
@@ -304,7 +383,7 @@ def cmd_stats(r, days=60, wpm=250):
 
 def main():
     sub = sys.argv[1] if len(sys.argv) > 1 else ""
-    if sub in ("guard", "stop"):
+    if sub in ("guard", "stop", "session"):
         r = None
         try:
             ev = json.load(sys.stdin)
@@ -312,7 +391,7 @@ def main():
             led = load(r)
             if not led:
                 return 0
-            return guard(r, *led, ev) if sub == "guard" else stop(r, led[0], ev)
+            return guard(r, *led, ev) if sub == "guard" else stop(r, led[0], ev) if sub == "stop" else session(r, *led)
         except Exception as e:  # fail open: a broken hook must never stop work
             if sub == "stop" and isinstance(e, ImportError):  # say it once per reply, not on every tool call
                 print(json.dumps({"systemMessage": "pace: needs Python 3.11+ (tomllib), so it is doing nothing here."}))
@@ -326,6 +405,9 @@ def main():
     sp.add_parser("check")
     sp.add_parser("pre-commit")
     sp.add_parser("stats")
+    h = sp.add_parser("harvest")
+    h.add_argument("--all", action="store_true", help="also show weaker wording (must, always, only)")
+    h.add_argument("--limit", type=int, default=60)
     g = sp.add_parser("gate")
     g.add_argument("--contract", required=True)
     g.add_argument("--walkthroughs")
@@ -341,6 +423,8 @@ def main():
         return cmd_pre_commit(r, load(r))
     if a.sub == "gate":
         return cmd_gate(a.contract, a.walkthroughs)
+    if a.sub == "harvest":
+        return cmd_harvest(r, load(r), a.all, a.limit)
     if a.sub == "review":
         return cmd_review(r, a.task, a.minutes, a.accepted)
     return cmd_stats(r)

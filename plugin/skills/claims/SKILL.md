@@ -1,6 +1,6 @@
 ---
 name: claims
-description: Use when the user states a promise the system must keep true for someone outside the code (a regulator, customers, a partner, a cofounder) - for example "customer data never leaves the EU region", "we never store card numbers", "no payout runs without a human approval", "medical codes never change without clinician sign-off" - or asks to add, compile or check a claim, asks "do we still keep our promises?", or when a "pace: continuity break" message appears. Works only in a project with pace.toml.
+description: Use when the user states a promise the system must keep true for someone outside the code (a regulator, customers, a partner, a cofounder) - for example "customer data never leaves the EU region", "we never store card numbers", "no payout runs without a human approval", "medical codes never change without clinician sign-off" - or asks to add, compile or check a claim, asks "do we still keep our promises?", wants to adopt pace in an existing codebase ("what have we already promised?", "harvest claims from our specs/docs"), or when a "pace: continuity break" message appears. Works only in a project with pace.toml.
 ---
 
 # Claims ledger
@@ -31,6 +31,14 @@ The script is `scripts/pace.py`, two folders above this skill's base directory: 
    The check is found by id: `claims/checks/<id>.sh` or `.py`. There is no `check` field.
 6. After the user pastes it, run `pace.py check` and report the line for the new claim.
 
+## Adopt in an existing codebase (brownfield)
+Existing projects already hold promises in specs, security and privacy docs, compliance notes, ADRs and README files. Start from those, not from a blank ledger.
+1. Run `pace.py harvest`. It lists sentences with strong promise wording (never, must not, shall, guarantee, no X without), spec-tool files first, and marks ones already in the ledger. `--all` adds weaker wording (must, always, only). It writes nothing.
+2. Group the candidates by who the promise was made to (regulator, customers, partners, the team) and drop internal coding conventions; those belong in rules files, not the ledger. Ask the user one question that lists at most 10 and asks which ones they have actually promised.
+3. Add each chosen one with the steps in "Add a claim". Prefer existing tests and scripts as checks: in an existing codebase most promises already have a test somewhere.
+4. Run `pace.py check` on the current main branch. A claim that already fails on existing code is not a new break. Tell the user and offer two choices: fix it first, or add `known_break = "<why, and the ticket>"` to the claim. A known break is reported on every check but never blocks; when its check starts passing, `check` says so and the user removes the line.
+5. Keep `mode = "observe"` for the first two weeks, then let the user decide on enforce from `pace.py stats`.
+
 ## On a continuity break
 1. Do not change the claim, the check, or the mode.
 2. Find the change that caused it (`git diff`, `git log -p` on the files the check reads).
@@ -38,4 +46,4 @@ The script is `scripts/pace.py`, two folders above this skill's base directory: 
 4. The user decides: revert the change, or change the claim. A changed claim means the promise changes, so the user tells whoever it was made to.
 
 ## Check status
-`pace.py check` prints one line per claim: `holds`, `BREAK`, `error` (the check could not run or timed out; does not block) or `uncompiled` (no check yet). Report it as it is, in 100 words or fewer.
+`pace.py check` prints one line per claim: `holds`, `BREAK`, `known-break` (an existing violation the user accepted; never blocks), `error` (the check could not run or timed out; does not block) or `uncompiled` (no check yet). Report it as it is, in 100 words or fewer.

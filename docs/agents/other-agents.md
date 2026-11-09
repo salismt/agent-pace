@@ -41,5 +41,6 @@ If your agent reads `AGENTS.md` but not skills, add:
 ```markdown
 ## Claims ledger (agent-pace)
 - `pace.toml` and existing files in `claims/checks/` are owner-only. Never edit them.
+- When you start or resume work, run `python3 .agents/scripts/pace.py check` before the first change, and read the promises in `pace.toml`.
 - Before committing, run `python3 .agents/scripts/pace.py check`. On a `BREAK`, don't commit and don't change the check: tell the user in one line which change broke which claim, then stop.
 ```

@@ -118,6 +118,40 @@ assert run(r, ["stop"], {"hook_event_name": "stop", "loop_count": 1, "last_assis
 assert run(r / "src", ["guard"], {"tool_name": "Bash", "cwd": str(r / "src"), "tool_input": {"command": "rm ../pace.toml"}},
            project_env=False)[0] == 2
 
+# brownfield: a known break is reported but never blocks; fixed one says so
+k = project("enforce")
+(k / "pace.toml").write_text((k / "pace.toml").read_text().replace(
+    'to = "regulator"\n', 'to = "regulator"\nknown_break = "legacy ledger table, removal in TICKET-12"\n', 1)
+    + '[[claim]]\nid = "C4"\nsaid = "fixed one"\nknown_break = "was broken"\n')
+(k / "claims" / "checks" / "C4.sh").write_text("exit 0\n")
+code, out, _ = run(k, ["check"])
+assert code == 0 and "known-break" in out and "TICKET-12" in out and "fixed: the owner can remove known_break" in out, out
+assert run(k, ["guard"], bash("git commit -m x"))[0] == 0
+assert run(k, ["pre-commit"])[0] == 0
+
+# session start: a new or resumed agent hears the promises and the last break
+code, out, _ = run(r, ["session"], {"hook_event_name": "SessionStart"})
+assert code == 0 and "never hold customer funds" in out and "mode: enforce" in out and "Last continuity break: C2" in out, out
+assert run(bare, ["session"], {"hook_event_name": "SessionStart"}) == (0, "", "")
+
+# harvest: promise-like sentences from docs, skipping code fences and agent-config folders
+h = Path(tempfile.mkdtemp())
+(h / "docs").mkdir(); (h / ".claude").mkdir()
+(h / "docs" / "security.md").write_text("# Security\n- We never store card numbers.\n```\nnever in code\n```\nUsers must log in.\n")
+(h / ".claude" / "x.md").write_text("Never edit this.\n")
+(h / "pace.toml").write_text('[[claim]]\nid = "C1"\nsaid = "We never store card numbers."\n')
+code, out, _ = run(h, ["harvest"])
+assert code == 0 and "docs/security.md:2" in out and "(in ledger)" in out and "never in code" not in out \
+    and ".claude" not in out and "must log in" not in out, out
+assert "must log in" in run(h, ["harvest", "--all"])[1]
+(h / ".specify" / "memory").mkdir(parents=True)
+(h / ".specify" / "memory" / "constitution.md").write_text("### Test-First (NON-NEGOTIABLE)\n")
+(h / "openspec" / "specs" / "auth").mkdir(parents=True)
+(h / "openspec" / "specs" / "auth" / "spec.md").write_text("The system SHALL lock an account after 5 failed logins.\n")
+out = run(h, ["harvest"])[1]
+assert out.index("[openspec]") < out.index("[doc]") and "[spec-kit]" in out, out  # spec files first
+
+
 # fail open: broken pace.toml never blocks, error is logged
 (o / "pace.toml").write_text("not = [valid")
 assert run(o, ["guard"], bash("git commit -m x"))[0] == 0 and log(o)[-1]["event"] == "hook_error"
