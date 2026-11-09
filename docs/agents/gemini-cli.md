@@ -10,14 +10,18 @@ Status: **from docs**, not yet run live. Uses Gemini CLI hooks ([docs](https://g
   "hooks": {
     "BeforeTool": [
       { "matcher": "run_shell_command|write_file|replace",
-        "hooks": [{ "type": "command", "command": "python3 \"$GEMINI_PROJECT_DIR/.agents/scripts/pace.py\" guard", "timeout": 900000 }] }
+        "hooks": [{ "type": "command", "command": "\"$(command -v python3 || command -v python || command -v py)\" \"$GEMINI_PROJECT_DIR/.agents/scripts/pace.py\" guard", "timeout": 900000 }] }
     ],
     "AfterAgent": [
-      { "hooks": [{ "type": "command", "command": "python3 \"$GEMINI_PROJECT_DIR/.agents/scripts/pace.py\" stop", "timeout": 10000 }] }
+      { "hooks": [{ "type": "command", "command": "\"$(command -v python3 || command -v python || command -v py)\" \"$GEMINI_PROJECT_DIR/.agents/scripts/pace.py\" stop", "timeout": 10000 }] }
     ]
   }
 }
 ```
+
+## Gemini CLI in GitHub Actions
+
+`run-gemini-cli` loads the project `.gemini/settings.json` hooks. Don't pass the action's `settings` input: it overwrites `.gemini/settings.json` and drops the hooks. See [cloud.md](cloud.md).
 
 ## How it maps
 

@@ -4,7 +4,7 @@
 
 A plugin for Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI and Devin, for people who delegate more code than they can read.
 
-[Install](#install) · [New project](#greenfield-start-a-new-project-with-promises) · [Existing codebase](#brownfield-add-agent-pace-to-an-existing-codebase) · [With Spec Kit, OpenSpec, BMAD and others](#with-spec-driven-development-tools) · [Limits](#known-limits)
+[Install](#install) · [Cloud](#local-pc-or-cloud-server) · [New project](#greenfield-start-a-new-project-with-promises) · [Existing codebase](#brownfield-add-agent-pace-to-an-existing-codebase) · [With Spec Kit, OpenSpec, BMAD and others](#with-spec-driven-development-tools) · [Limits](#known-limits)
 
 ## The problem
 
@@ -80,7 +80,22 @@ Then tell Claude: **"turn on pace here"**. It copies a starting `pace.toml` into
 
 What each agent supports: [docs/agents/README.md](docs/agents/README.md).
 
-Needs Python 3.11+ (for `tomllib`). No other dependencies, no network calls.
+Needs Python 3.8+. No other dependencies, no network calls.
+
+## Local PC or cloud server
+
+The same files work on your laptop, a remote dev box, a CI runner, or a vendor cloud sandbox: Claude Code on the web, Codex cloud, the Copilot coding agent, Cursor cloud agents or Devin. Cloud sandboxes start from a fresh clone and don't install your plugins or read your home folder. For them:
+
+1. **Commit `pace.toml`, `claims/checks/`, `.agents/` and your agent's hook file.** Claude Code on the web doesn't install plugins, but it runs a committed `.claude/settings.json`.
+2. **Add one line to the environment's setup script**, so every fresh clone gets the git hook (Codex cloud has no repo hooks, so this is its only layer):
+   ```bash
+   python3 .agents/scripts/pace.py install-git-hook
+   ```
+3. **Read observe-mode results in the session transcript.** The container, and `.pace/log.jsonl` with it, disappears after the session, so pace also prints every would-be block there.
+
+On Windows, Claude Code runs hooks in Git Bash, and the hooks try `python3`, then `python`, then `py`.
+
+Per-product setup: [docs/agents/cloud.md](docs/agents/cloud.md). Tested in clean Linux containers on Python 3.8 and 3.12: the git hook installs on a fresh clone and blocks a violating commit, and the guard and word cap respond the same as on a laptop.
 
 ## Greenfield: start a new project with promises
 

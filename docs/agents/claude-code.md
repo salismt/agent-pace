@@ -29,6 +29,10 @@ claude plugin disable agent-pace@agent-pace --scope project
 
 Or delete `pace.toml`.
 
+## Claude Code on the web (cloud sessions)
+
+Cloud sessions don't install plugins, but they run the repo's `.claude/settings.json` hooks. Commit `.agents/` from the [common setup](README.md#common-setup-every-agent-except-claude-code) and the `.claude/settings.json` block from [cursor.md](cursor.md). That block runs on your PC as well, so if your repo has it, you don't need the plugin. See [cloud.md](cloud.md).
+
 ## Without the plugin system
 
 Use the [common setup](README.md#common-setup-every-agent-except-claude-code) and the `.claude/settings.json` block in [cursor.md](cursor.md). Claude Code reads it too.

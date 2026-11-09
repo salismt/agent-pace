@@ -152,6 +152,40 @@ out = run(h, ["harvest"])[1]
 assert out.index("[openspec]") < out.index("[doc]") and "[spec-kit]" in out, out  # spec files first
 
 
+# observe-mode breaks are visible in the transcript (cloud containers lose .pace/)
+code, out, _ = run(o, ["guard"], bash("git commit -m x"))
+assert code == 0 and "observe mode, not blocking" in out and "C2" in out, out
+
+# Python 3.8-3.10 fallback parser gives the same result as tomllib
+import importlib.util, tomllib
+spec = importlib.util.spec_from_file_location("pace", PACE); pace = importlib.util.module_from_spec(spec); spec.loader.exec_module(pace)
+template = (PACE.parent.parent / "templates" / "pace.toml").read_text()
+samples = [template, template.replace("# [[claim]]", "[[claim]]").replace('# id = ', 'id = ').replace('# said = ', 'said = ')
+           .replace('# to = ', 'to = ').replace('# since = ', 'since = ').replace('# cosign = ', 'cosign = '),
+           (k / "pace.toml").read_text(), 'a = 1\nb = 2.5\nc = true\nd = ["x", "y"]  # note\ne = \'lit # not a comment\'\n[t]\nf = "q\\"uote"\n']
+real = sys.modules.pop("tomllib"); sys.modules["tomllib"] = None
+try:
+    for txt in samples:
+        assert pace.parse_toml(txt) == real.loads(txt), txt
+    try:
+        pace.parse_toml('x = """multi"""\n'); raise AssertionError("multi-line strings should be refused")
+    except ValueError:
+        pass
+finally:
+    sys.modules["tomllib"] = real
+
+# install-git-hook: idempotent, keeps an existing hook, and a real commit is blocked through it
+gr = project("enforce")
+subprocess.run(["git", "init", "-q"], cwd=gr, check=True)
+(gr / ".git" / "hooks" / "pre-commit").write_text("#!/bin/sh\necho existing-hook\n")
+assert run(gr, ["install-git-hook"])[0] == 0 and "already installed" in run(gr, ["install-git-hook"])[1]
+hook = (gr / ".git" / "hooks" / "pre-commit").read_text()
+assert "existing-hook" in hook and hook.count(pace.GIT_HOOK_MARK) == 1, hook
+git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+subprocess.run(["git", "add", "-A"], cwd=gr, check=True)
+p = subprocess.run([*git, "commit", "-qm", "x"], cwd=gr, capture_output=True, text=True)
+assert p.returncode != 0 and "never hold customer funds" in p.stderr and "existing-hook" in p.stdout + p.stderr, (p.stdout, p.stderr)
+
 # fail open: broken pace.toml never blocks, error is logged
 (o / "pace.toml").write_text("not = [valid")
 assert run(o, ["guard"], bash("git commit -m x"))[0] == 0 and log(o)[-1]["event"] == "hook_error"

@@ -5,6 +5,16 @@ Status: **from docs**, not yet run live. Devin runs hooks from `.claude/settings
 1. Do the [common setup](README.md#common-setup-every-agent-except-claude-code).
 2. Add the `.claude/settings.json` block from [cursor.md](cursor.md). Its matcher already includes Devin's tool names (`exec`, `edit`, `write`, `apply_patch`).
 
+## Devin cloud sessions
+
+Cloud sessions run hooks through Devin plugins; whether they run plain repo hook files isn't documented. Add the git hook to the `initialize` step of `.devin/blueprint.yaml`:
+
+```bash
+python3 .agents/scripts/pace.py install-git-hook
+```
+
+See [cloud.md](cloud.md).
+
 ## How it maps
 
 | pace needs | Devin gives |

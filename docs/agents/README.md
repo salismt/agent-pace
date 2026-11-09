@@ -39,4 +39,4 @@ pace.toml                    your promises (owner-only)
 
 Then add the hook config from your agent's guide. Commit `.agents/` and `pace.toml` so everyone on the repo gets the same checks.
 
-Needs Python 3.11+. pace starts in observe mode: it logs what it would block to `.pace/log.jsonl` and blocks nothing until you set `mode = "enforce"`.
+Needs Python 3.8+. Running on a cloud server (Claude Code on the web, Codex cloud, Copilot coding agent, Cursor cloud agents, Devin)? Read [cloud.md](cloud.md) first. pace starts in observe mode: it logs what it would block to `.pace/log.jsonl` and blocks nothing until you set `mode = "enforce"`.

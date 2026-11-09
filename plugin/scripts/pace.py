@@ -7,6 +7,7 @@ Cursor, Copilot CLI and Devin payload shapes. Subcommands:
   guard   pre-tool hook (shell commands and file edits)
   stop    end-of-turn hook (word cap)
   session session-start hook: tells a new or resumed agent which promises are in force
+  install-git-hook  add the pre-commit line to this clone's git hooks (idempotent; for cloud setup scripts)
   harvest [--all] [--limit N]  list promise-like sentences already in the repo's specs and docs
   check   replay the ledger, print one line per claim, exit 1 on a break
   pre-commit  git hook for any agent tool: replay, block only in enforce mode
@@ -63,12 +64,64 @@ def project_root(ev=None):
     return start
 
 
+def parse_toml(text):
+    try:
+        import tomllib  # Python 3.11+
+        return tomllib.loads(text)
+    except ImportError:
+        pass
+    # ponytail: subset parser for Python 3.8-3.10 (common on cloud images): [table], [[array]],
+    # key = "str" | 'str' | int | float | bool | [array]. Anything else raises, and hooks fail open.
+    data, cur = {}, None
+    cur = data
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.fullmatch(r"\[\[\s*([\w.-]+)\s*\]\]\s*(#.*)?", line) or re.fullmatch(r"\[\s*([\w.-]+)\s*\]\s*(#.*)?", line)
+        if m:
+            cur = {}
+            if line.startswith("[["):
+                data.setdefault(m.group(1), []).append(cur)
+            else:
+                cur = data.setdefault(m.group(1), {})
+            continue
+        m = re.fullmatch(r"([\w-]+)\s*=\s*(.+)", line)
+        if not m:
+            raise ValueError(f"pace.toml line {n}: cannot parse {line!r}")
+        cur[m.group(1)] = _toml_value(m.group(2), n)
+    return data
+
+
+def _toml_value(v, n):
+    if v[0] in "\"[":
+        val, end = json.JSONDecoder().raw_decode(v)
+    elif v[0] == "'":
+        end = v.index("'", 1) + 1
+        val = v[1:end - 1]
+    else:
+        tok = v.split("#", 1)[0].strip()
+        end = len(v) if "#" not in v else v.index("#")
+        val = {"true": True, "false": False}.get(tok)
+        if val is None:
+            try:
+                val = int(tok)
+            except ValueError:
+                try:
+                    val = float(tok)
+                except ValueError:
+                    raise ValueError(f"pace.toml line {n}: unsupported value {v!r}") from None
+    rest = v[end:].strip()
+    if rest and not rest.startswith("#"):
+        raise ValueError(f"pace.toml line {n}: unexpected {rest!r}")
+    return val
+
+
 def load(r):
     f = r / "pace.toml"
     if not f.exists():
         return None
-    import tomllib  # Python 3.11+; on older Pythons the hook fails open and logs a hook_error
-    d = tomllib.loads(f.read_text())
+    d = parse_toml(f.read_text())
     return {"mode": "observe", "word_cap": 150, **d.get("pace", {})}, d.get("claim", [])
 
 
@@ -157,7 +210,9 @@ def guard(r, cfg, claims, ev):
     if not breaks:
         return 0
     log(r, event="continuity_break", mode=cfg["mode"], claims=[c["id"] for c, _, _ in breaks], command=cmd[:200])
-    if cfg["mode"] != "enforce":
+    if cfg["mode"] != "enforce":  # visible in the transcript, so observe works where .pace/ doesn't survive (cloud)
+        print(json.dumps({"systemMessage": "pace (observe mode, not blocking): enforce mode would stop this. "
+                          + "; ".join(f'{c["id"]}: "{c.get("said", "")}"' for c, _, _ in breaks)}))
         return 0
     return deny(break_message(breaks))
 
@@ -227,6 +282,34 @@ def cmd_check(r, led):
         print(f'{c["id"]:<6} {s:<11} {c.get("said", "")}' + note)
     print(f'mode: {led[0]["mode"]}')
     return 1 if any(s == "BREAK" for _, s, _ in res) else 0
+
+
+GIT_HOOK_MARK = "# agent-pace: replay the claims ledger before each commit"
+
+
+def cmd_install_git_hook(r):
+    """Fresh clones (cloud sandboxes) have no git hooks; run this from the environment's setup script."""
+    try:
+        hooks = Path(subprocess.run(["git", "rev-parse", "--git-path", "hooks"], cwd=r, capture_output=True,
+                                    text=True, timeout=30, check=True).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        print("pace: not a git repository:", r)
+        return 1
+    hooks = hooks if hooks.is_absolute() else r / hooks
+    me = Path(__file__).resolve()
+    script = f'"$(git rev-parse --show-toplevel)/{me.relative_to(r).as_posix()}"' if r in me.parents else f'"{me}"'
+    block = (f"\n{GIT_HOOK_MARK}\nPY=$(command -v python3 || command -v python || command -v py)\n"
+             f'if [ -n "$PY" ]; then "$PY" {script} pre-commit || exit 1; fi\n')
+    f = hooks / "pre-commit"
+    text = f.read_text() if f.exists() else "#!/bin/sh\n"
+    if GIT_HOOK_MARK in text:
+        print(f"pace: already installed in {f}")
+        return 0
+    hooks.mkdir(parents=True, exist_ok=True)
+    f.write_text(text.rstrip("\n") + "\n" + block)
+    f.chmod(f.stat().st_mode | 0o111)
+    print(f"pace: pre-commit hook installed in {f}")
+    return 0
 
 
 def cmd_pre_commit(r, led):
@@ -393,8 +476,6 @@ def main():
                 return 0
             return guard(r, *led, ev) if sub == "guard" else stop(r, led[0], ev) if sub == "stop" else session(r, *led)
         except Exception as e:  # fail open: a broken hook must never stop work
-            if sub == "stop" and isinstance(e, ImportError):  # say it once per reply, not on every tool call
-                print(json.dumps({"systemMessage": "pace: needs Python 3.11+ (tomllib), so it is doing nothing here."}))
             try:
                 log(r or project_root(), event="hook_error", hook=sub, error=repr(e)[:300])
             except Exception:
@@ -404,6 +485,7 @@ def main():
     sp = ap.add_subparsers(dest="sub", required=True)
     sp.add_parser("check")
     sp.add_parser("pre-commit")
+    sp.add_parser("install-git-hook")
     sp.add_parser("stats")
     h = sp.add_parser("harvest")
     h.add_argument("--all", action="store_true", help="also show weaker wording (must, always, only)")
@@ -419,6 +501,8 @@ def main():
     r = project_root()
     if a.sub == "check":
         return cmd_check(r, load(r))
+    if a.sub == "install-git-hook":
+        return cmd_install_git_hook(r)
     if a.sub == "pre-commit":
         return cmd_pre_commit(r, load(r))
     if a.sub == "gate":

@@ -7,14 +7,13 @@ What you get: the ledger is replayed on every commit, plus the skills. What you 
 ## Git pre-commit (any agent)
 
 1. Do the [common setup](README.md#common-setup-every-agent-except-claude-code). For Cline, copy into `.cline/` instead of `.agents/` (Cline reads skills from `.cline/skills`), and use that path below.
-2. Install the hook:
+2. Install the hook. On a PC, run this once per clone. On a cloud server, put it in the environment's setup script (see [cloud.md](cloud.md)):
 
 ```bash
-printf '#!/bin/sh\nexec python3 "$(git rev-parse --show-toplevel)/.agents/scripts/pace.py" pre-commit\n' > .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
+python3 .agents/scripts/pace.py install-git-hook
 ```
 
-If you already have a pre-commit hook, add the `exec python3 …` line to it instead of overwriting it. Using the [pre-commit](https://pre-commit.com) framework instead:
+It adds one block to `.git/hooks/pre-commit` (or your `core.hooksPath`), keeps any hook that's already there, and does nothing if it's already installed. Using the [pre-commit](https://pre-commit.com) framework instead:
 
 ```yaml
 - repo: local

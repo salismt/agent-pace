@@ -12,16 +12,26 @@ Uses Codex hooks ([docs](https://developers.openai.com/codex/hooks)) and skills 
   "hooks": {
     "PreToolUse": [
       { "matcher": "Bash|apply_patch",
-        "hooks": [{ "type": "command", "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/scripts/pace.py\" guard", "timeout": 900 }] }
+        "hooks": [{ "type": "command", "command": "\"$(command -v python3 || command -v python || command -v py)\" \"$(git rev-parse --show-toplevel)/.agents/scripts/pace.py\" guard", "timeout": 900 }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/scripts/pace.py\" stop", "timeout": 10 }] }
+      { "hooks": [{ "type": "command", "command": "\"$(command -v python3 || command -v python || command -v py)\" \"$(git rev-parse --show-toplevel)/.agents/scripts/pace.py\" stop", "timeout": 10 }] }
     ]
   }
 }
 ```
 
 3. Trust the hooks. Codex skips new or changed hooks until you review them: run `/hooks` in Codex. Project hooks also need the project itself to be trusted.
+
+## Codex cloud
+
+Codex cloud tasks don't run hooks from the repo. Use the git hook from the environment's setup script, plus the `AGENTS.md` lines in [other-agents.md](other-agents.md#rules-file-agents-without-skills):
+
+```bash
+python3 .agents/scripts/pace.py install-git-hook
+```
+
+See [cloud.md](cloud.md).
 
 ## How it maps
 
