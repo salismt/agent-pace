@@ -208,6 +208,26 @@ subprocess.run(["git", "add", "-A"], cwd=gr, check=True)
 p = subprocess.run([*git, "commit", "-qm", "x"], cwd=gr, capture_output=True, text=True)
 assert p.returncode != 0 and "never hold customer funds" in p.stderr and "existing-hook" in p.stdout + p.stderr, (p.stdout, p.stderr)
 
+# commit-time rule: pace.toml or an existing check changed by any means (here plain Python, as Codex did in
+# PromiseBench) blocks the agent's commit; a new check file does not
+cr = Path(tempfile.mkdtemp())
+(cr / "claims" / "checks").mkdir(parents=True)
+(cr / "claims" / "checks" / "C1.sh").write_text("exit 0\n")
+(cr / "pace.toml").write_text('[pace]\nmode = "enforce"\n[[claim]]\nid = "C1"\nsaid = "ok"\n')
+subprocess.run(["git", "init", "-q", "--template="], cwd=cr, check=True)
+subprocess.run(["git", "add", "-A"], cwd=cr, check=True)
+subprocess.run([*git, "commit", "-qm", "init"], cwd=cr, check=True)
+assert run(cr, ["guard"], bash("git commit -am x"))[0] == 0
+(cr / "pace.toml").write_text((cr / "pace.toml").read_text().replace('"ok"', '"weaker"'))
+code, _, err = run(cr, ["guard"], bash("git commit -am x"))
+assert code == 2 and "pace.toml" in err and "only the owner" in err, err
+subprocess.run(["git", "checkout", "-q", "HEAD", "--", "pace.toml"], cwd=cr, check=True)
+(cr / "claims" / "checks" / "C1.sh").write_text("exit 0  # weakened\n")
+assert run(cr, ["guard"], bash("git push"))[0] == 2
+subprocess.run(["git", "checkout", "-q", "HEAD", "--", "claims/checks/C1.sh"], cwd=cr, check=True)
+(cr / "claims" / "checks" / "C2.sh").write_text("exit 0\n")  # a new check is allowed
+assert run(cr, ["guard"], bash("git commit -am x"))[0] == 0
+
 # fail open: broken pace.toml never blocks, error is logged
 (o / "pace.toml").write_text("not = [valid")
 assert run(o, ["guard"], bash("git commit -m x"))[0] == 0 and log(o)[-1]["event"] == "hook_error"

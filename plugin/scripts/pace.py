@@ -192,6 +192,16 @@ def tool_call(ev):
     return "edit", "", paths
 
 
+def protected_changes(r):
+    """pace.toml or existing checks modified, deleted or renamed since HEAD. New check files are fine."""
+    try:
+        p = subprocess.run(["git", "diff", "HEAD", "--name-only", "--diff-filter=MDRT", "--", "pace.toml", "claims/checks"],
+                           cwd=r, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return p.stdout.split() if p.returncode == 0 else []
+
+
 def guard(r, cfg, claims, ev):
     kind, cmd, paths = tool_call(ev)
     ledger, checks = r / "pace.toml", r / "claims" / "checks"
@@ -211,6 +221,10 @@ def guard(r, cfg, claims, ev):
                     "create a new check file with the Write tool.")
     if not claims or not GATE.search(cmd):
         return 0
+    touched = protected_changes(r)
+    if touched:  # however they were written (a script, a heredoc): the commit is where it can't be missed
+        return deny(f"pace: {', '.join(touched)} changed since the last commit, and only the owner may change them. "
+                    "Restore them (git checkout HEAD -- <file>) and tell the user what you wanted changed.")
     breaks = [x for x in replay(r, claims) if x[1] == "BREAK"]
     if not breaks:
         return 0
