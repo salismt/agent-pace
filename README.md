@@ -83,6 +83,135 @@ Not shown: the benchmark can't tell whether guarding some promises pushes breaks
 
 The paper, with methods, statistics and limits, is [paper/main.pdf](paper/main.pdf). The benchmark, its data and an Agentic Benchmark Checklist self-score live at [salismt/promisebench](https://github.com/salismt/promisebench).
 
+## Install
+
+**Claude Code**, in the project you want it in:
+
+```bash
+claude plugin marketplace add salismt/agent-pace --scope project
+claude plugin install agent-pace@agent-pace --scope project
+```
+
+Then tell Claude: **"turn on pace here"**. It copies a starting `pace.toml` into the project root, in observe mode. Always pass `--scope project`; the default is `user`, which means every project you open.
+
+**Other agents:** copy three folders into `.agents/` and add one hook config, or a small plugin for agents that extend through code. See the guide for yours:
+
+| Agent | Guide | Status |
+|---|---|---|
+| Claude Code | [docs/agents/claude-code.md](docs/agents/claude-code.md) | tested live |
+| OpenAI Codex CLI | [docs/agents/codex.md](docs/agents/codex.md) | tested live |
+| Gemini CLI | [docs/agents/gemini-cli.md](docs/agents/gemini-cli.md) | from docs |
+| Cursor | [docs/agents/cursor.md](docs/agents/cursor.md) | from docs |
+| GitHub Copilot CLI | [docs/agents/copilot-cli.md](docs/agents/copilot-cli.md) | from docs |
+| Devin (formerly Windsurf) | [docs/agents/devin.md](docs/agents/devin.md) | from docs |
+| Hermes Agent | [docs/agents/hermes.md](docs/agents/hermes.md) | tested live (hook runner) |
+| Pi | [docs/agents/pi.md](docs/agents/pi.md) | tested live (scripted model) |
+| DeepSeek Harness (dsh) | [docs/agents/deepseek-harness.md](docs/agents/deepseek-harness.md) | partly tested |
+| OpenClaw | [docs/agents/openclaw.md](docs/agents/openclaw.md) | from source |
+| OpenCode, Amp, Cline, anything with git | [docs/agents/other-agents.md](docs/agents/other-agents.md) | git hook |
+| Any other harness | [docs/agents/any-harness.md](docs/agents/any-harness.md) | write a 25-line adapter |
+
+What each agent supports: [docs/agents/README.md](docs/agents/README.md).
+
+**Not tied to one agent.** Every integration calls the same `pace.py` with JSON on stdin and reads the exit code (2 blocks, 0 allows). It accepts each harness's own tool names and argument fields, so an adapter only forwards the event. The git pre-commit hook is the floor that works under any agent that commits.
+
+Needs Python 3.8+. No other dependencies, no network calls.
+
+## Local PC or cloud server
+
+The same files work on your laptop, a remote dev box, a CI runner, or a vendor cloud sandbox: Claude Code on the web, Codex cloud, the Copilot coding agent, Cursor cloud agents or Devin. Cloud sandboxes start from a fresh clone and don't install your plugins or read your home folder. For them:
+
+1. **Commit `pace.toml`, `claims/checks/`, `.agents/` and your agent's hook file.** Claude Code on the web doesn't install plugins, but it runs a committed `.claude/settings.json`.
+2. **Add one line to the environment's setup script**, so every fresh clone gets the git hook (Codex cloud has no repo hooks, so this is its only layer):
+   ```bash
+   python3 .agents/scripts/pace.py install-git-hook
+   ```
+3. **Read observe-mode results in the session transcript.** The container, and `.pace/log.jsonl` with it, disappears after the session, so pace also prints every would-be block there.
+
+On Windows, Claude Code runs hooks in Git Bash, and the hooks try `python3`, then `python`, then `py`.
+
+Per-product setup: [docs/agents/cloud.md](docs/agents/cloud.md). Tested in clean Linux containers on Python 3.8 and 3.12: the git hook installs on a fresh clone and blocks a violating commit, and the guard and word cap respond the same as on a laptop.
+
+## Greenfield: start a new project with promises
+
+A new project has no legacy, so the ledger can grow with every promise you make.
+
+1. **Day one:** install, then tell your agent "turn on pace here". Leave `mode = "observe"` for the first week, then switch to `enforce`. With no legacy code, false breaks are rare.
+2. **Write promises down as you make them.** Each sentence you put in a pitch deck, privacy policy, customer contract or partner agreement goes into the ledger, for example "customer data stays in the EU" or "no payout runs without human approval". Tell your agent; the `claims` skill writes the check and proves it fails on a violation.
+3. **Gate the core work.** When an agent builds a feature from a spec or PRD, the `comprehension-gate` skill tags each acceptance criterion core or throwaway. Core ones need a walkthrough and your own explain-back before the work counts as ready.
+4. **Watch your approval speed.** `pace.py stats` shows how often you reply faster than you could read. If that number stays high, lower `word_cap`.
+
+## Brownfield: add agent-pace to an existing codebase
+
+An existing codebase already holds promises, scattered through specs, security and privacy docs, ADRs and READMEs. Some are already broken. agent-pace starts from what is written down and treats existing breaks separately from new ones.
+
+### Adopt it in four steps
+
+1. **Harvest what you've already promised.**
+   ```bash
+   python3 <plugin>/scripts/pace.py harvest          # strong wording: never, must not, SHALL, MUST, guarantee
+   python3 <plugin>/scripts/pace.py harvest --all    # adds must, always, only
+   ```
+   It lists sentences with promise wording, spec-tool files first, and marks the ones already in the ledger. It writes nothing. On a real 70-file codebase it found 321 candidates; most were internal conventions, which belong in a rules file. Keep only promises made to someone outside the code.
+2. **Turn the chosen ones into claims.** Tell your agent "adopt pace in this codebase". The `claims` skill groups the candidates by who the promise was made to and asks you once which ones are real. Then it writes the checks, reusing existing tests where it can.
+3. **Baseline the current main branch.** Run `pace.py check`. A claim that already fails on existing code is not a new break. Either fix it first, or record it:
+   ```toml
+   [[claim]]
+   id = "C3"
+   said = "Card numbers are never written to logs."
+   to = "PCI assessor"
+   known_break = "legacy payment worker logs raw requests; removal tracked in PAY-123"
+   ```
+   A known break is shown on every check but never blocks. When its check starts passing, `check` tells you to remove the line.
+4. **Observe for two weeks, then enforce.** `.pace/log.jsonl` shows every would-be block, so you can spot false breaks before they cost anyone a stopped commit.
+
+### Continue work on an existing project
+
+Most brownfield work is picking up where you, a teammate or another agent left off.
+
+- **The promises travel with the repo.** `pace.toml` and `claims/checks/` are in git, so every agent, session and teammate gets the same ledger, whichever agent tool they use.
+- **New sessions hear the rules first.** The Claude Code plugin's session-start hook (`pace.py session`) tells a new or resumed agent which promises are in force, which are known breaks, and when the last break happened. For other agents, add the `AGENTS.md` lines in [other-agents.md](docs/agents/other-agents.md#rules-file-agents-without-skills). In a live Claude Code test, an agent told to add a `card_number` column read C1 at session start and stopped before editing anything: "Adding `card_number TEXT` would break C1. Should I add a token or last-4 column instead?"
+- **Check before the first change.** The agent runs `pace.py check` before it touches anything, so a break that was already there isn't blamed on the new work.
+- **Gate only what the change touches.** For a change in legacy code, the agent writes a small `coverage-contract.json` with this change's acceptance criteria only, reusing your spec tool's requirement ids. You explain those back, not the whole codebase.
+- **Catch up after time away.** Ask "what happened while I was away?". The `pace` skill shows `stats` and every break since your last review, in 100 words or fewer.
+
+### With spec-driven development tools
+
+Spec-driven tools write your non-negotiables down, and agent-pace makes them stop a commit. We read the docs of the five most-starred AI development methods, plus Kiro. Each keeps requirements in files and checks them inside the agent session, if at all. None of them blocks a commit when a requirement breaks. `harvest` reads all of their requirement files.
+
+| Method (GitHub stars, 9 Nov 2026) | Where its non-negotiables live | Its brownfield entry point | How agent-pace fits |
+|---|---|---|---|
+| [Superpowers](https://github.com/obra/superpowers) (315k) | `docs/superpowers/specs/`, `docs/superpowers/plans/` | The brainstorming skill explores the existing project first | `harvest` reads the design specs and plans. The constraints in them that customers or regulators rely on become claims. Both tools' session-start hooks run side by side. |
+| [GitHub Spec Kit](https://github.com/github/spec-kit) (149k) | `.specify/memory/constitution.md`; `specs/NNN-feature/spec.md` (`FR-001: System MUST …`) | `specify init --here`, then `/speckit-constitution` with principles already true for the repo | The Constitution Check runs once, when the plan is made. agent-pace re-checks the outward-facing principles on every commit. Reuse `FR-001` as the acceptance id in the comprehension gate. |
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) (74k) | `openspec/specs/<capability>/spec.md` and `openspec/changes/` (`SHALL` / `MUST`) | Write specs only for what you're about to change | Each change's `SHALL` lines that touch a promise become claims, and they stay enforced after `/opsx:archive`. |
+| [GSD](https://github.com/gsd-build/get-shit-done) (64k, legacy repo) | `.planning/REQUIREMENTS.md`, `.planning/PROJECT.md` | `/gsd-map-codebase` records existing behaviour as "Validated" | Validated requirements that are promises become claims. Known gaps go in as `known_break`. |
+| [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) (55k) | `_bmad-output/prd-*/` (`FR-N`, `RULE-N`) | `bmad-project-context`, then `bmad-build` | `RULE-N` items ("everything below must obey") are the closest to claims. |
+| [Kiro](https://kiro.dev) (250k+ users, 2025) | `.kiro/steering/`, `.kiro/specs/*/requirements.md` (EARS: `WHEN … THE SYSTEM SHALL …`) | "Generate Steering Docs" from the existing project | `SHALL` requirements that are outward promises become claims. Kiro's hooks run inside the session; agent-pace adds the check at commit time. |
+
+Requirement files and phrasing are taken from each project's own docs. We haven't run agent-pace alongside each of these tools yet. Reports are welcome.
+
+## A promise's life
+
+1. **You say it:** "We never store card numbers."
+2. **The agent compiles it** into `claims/checks/C1.sh`: the cheapest faithful check, such as a test, a grep or Semgrep rule, a config assertion, or a probe against the running app.
+3. **The agent proves the check bites.** It makes a deliberate violation in a throwaway worktree, and the check must fail. A check that can't be made to fail is reported as weak.
+4. **You paste the claim into `pace.toml`.** Only you can.
+5. **Every commit, push and PR replays the ledger.** On a break, you decide: revert the change, or change the promise and tell whoever you made it to.
+
+```toml
+[pace]
+mode = "observe"   # log what would block; "enforce" blocks
+word_cap = 150
+
+[[claim]]
+id = "C1"
+said = "We never store card numbers."
+to = "customers, PCI assessor"
+since = "2026-11-09"
+cosign = ""        # someone who must agree, for example a domain expert
+# known_break = "why, and the ticket"   # an existing violation you accept for now; reported, never blocks
+```
+
 ## Built to limit its own damage
 
 | Property | How |
