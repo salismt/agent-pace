@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="426" viewBox="0 0 880 426" role="img">
+<title>Override tickets: runs that broke a stated promise in a commit, per setup and arm</title>
+<rect width="880" height="426" fill="#0d1117"/>
+<g font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="15" fill="#f0f6fc">
+<text x="0" y="22" font-size="17" font-weight="600">A teammate says the promise is out of date. Did the agent break it?</text>
+<text x="0" y="44" fill="#9198a1">Runs that broke a stated promise in a commit, PromiseBench override tickets</text>
+<text x="0" y="74" font-weight="600">Claude Code · Sonnet 5.5</text>
+<text x="238" y="97" text-anchor="end" fill="#9198a1">Promise in AGENTS.md</text>
+<rect x="250" y="85" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="85" width="140.0" height="16" rx="3" fill="#f85149"/>
+<text x="682" y="98" font-weight="600" fill="#f0f6fc">16/48</text>
+<text x="238" y="127" text-anchor="end" fill="#9198a1">Plain pre-commit hook</text>
+<rect x="250" y="115" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="115" width="140.0" height="16" rx="3" fill="#f85149"/>
+<text x="682" y="128" font-weight="600" fill="#f0f6fc">16/48</text>
+<text x="238" y="157" text-anchor="end" fill="#9198a1">agent-pace</text>
+<rect x="250" y="145" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="145" width="3" height="16" fill="#3fb950"/>
+<text x="682" y="158" font-weight="600" fill="#3fb950">0/48</text>
+<text x="0" y="190" font-weight="600">Claude Code · Sonnet 5.5, medium effort</text>
+<text x="238" y="213" text-anchor="end" fill="#9198a1">Promise in AGENTS.md</text>
+<rect x="250" y="201" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="201" width="140.0" height="16" rx="3" fill="#f85149"/>
+<text x="682" y="214" font-weight="600" fill="#f0f6fc">8/24</text>
+<text x="238" y="243" text-anchor="end" fill="#9198a1">Plain pre-commit hook</text>
+<rect x="250" y="231" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="231" width="140.0" height="16" rx="3" fill="#f85149"/>
+<text x="682" y="244" font-weight="600" fill="#f0f6fc">8/24</text>
+<text x="238" y="273" text-anchor="end" fill="#9198a1">agent-pace</text>
+<rect x="250" y="261" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="261" width="3" height="16" fill="#3fb950"/>
+<text x="682" y="274" font-weight="600" fill="#3fb950">0/24</text>
+<text x="0" y="306" font-weight="600">Codex CLI · GPT-6.1-Sol, medium effort</text>
+<text x="238" y="329" text-anchor="end" fill="#9198a1">Promise in AGENTS.md</text>
+<rect x="250" y="317" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="317" width="87.5" height="16" rx="3" fill="#f85149"/>
+<text x="682" y="330" font-weight="600" fill="#f0f6fc">5/24</text>
+<text x="238" y="359" text-anchor="end" fill="#9198a1">Plain pre-commit hook</text>
+<rect x="250" y="347" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="347" width="105.0" height="16" rx="3" fill="#f85149"/>
+<text x="682" y="360" font-weight="600" fill="#f0f6fc">6/24</text>
+<text x="238" y="389" text-anchor="end" fill="#9198a1">agent-pace</text>
+<rect x="250" y="377" width="420" height="16" rx="3" fill="#151b23"/>
+<rect x="250" y="377" width="3" height="16" fill="#3fb950"/>
+<text x="682" y="390" font-weight="600" fill="#3fb950">0/24</text>
+</g></svg>

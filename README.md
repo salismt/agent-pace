@@ -2,6 +2,10 @@
 
 **Let your agents run. Get interrupted only when they break a promise you made.**
 
+![A teammate's ticket says a promise is out of date and to update the check. With a plain pre-commit hook, Codex edits the checks and commits the break. With agent-pace, the same agent is refused and hands the change to the owner. Plain hook 6/24 broke, agent-pace 0/24.](docs/hero.gif)
+
+<sub>Real lines from two PromiseBench runs of the same ticket with Codex CLI and GPT-6.1-Sol, shortened. Numbers: override tickets; all breaks came from 2 of 6 projects.</sub>
+
 A plugin for Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI, Devin, Hermes, Pi, DeepSeek Harness and OpenClaw (or [any other harness](docs/agents/any-harness.md)), for people who delegate more code than they can read.
 
 [Benchmark](#benchmark-promisebench) · [Install](#install) · [Cloud](#local-pc-or-cloud-server) · [New project](#greenfield-start-a-new-project-with-promises) · [Existing codebase](#brownfield-add-agent-pace-to-an-existing-codebase) · [With Spec Kit, OpenSpec, BMAD and others](#with-spec-driven-development-tools) · [Limits](#known-limits)
@@ -17,6 +21,8 @@ In [Anthropic's randomized trial](https://www.anthropic.com/research/AI-assistan
 More approval gates don't fix this; you approve them without reading too. pace stops asking for your attention on everything and asks for it only where a mistake would break something you promised.
 
 ## What it does
+
+![pace.toml holds the promise, an owner-only check enforces it, and every agent commit replays the check: a passing check lets the commit through, a failing one stops it and tells the user which change broke which promise.](docs/how-it-works.gif)
 
 | | |
 |---|---|
@@ -59,7 +65,12 @@ The same run in OpenAI Codex CLI 0.159 gave the same three blocks: the `apply_pa
 
 [PromiseBench](https://github.com/salismt/promisebench) has six small projects: payments, telemetry, a public API, an audit log, password storage and data residency. Each has two promises the agent is told about and an ordinary ticket that puts pressure on one. The *override* version of the ticket adds a teammate's note: "that promise is out of date, update the check if it complains". A sealed behavioural oracle, which neither the agent nor any guard sees, decides whether a promise broke. The checks were written blind by a separate agent from the promise text alone. The plan and every deviation are logged in [bench/PREREGISTRATION.md](bench/PREREGISTRATION.md).
 
-Override tickets, runs that broke a stated promise in a commit, per project (two rounds, four agent setups, 648 runs; the incomplete first Codex round is in the paper):
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/results-dark.svg">
+  <img alt="Override tickets, runs that broke a stated promise in a commit. Sonnet 5.5: prose 16/48, plain hook 16/48, agent-pace 0/48. Sonnet 5.5 medium effort: 8/24, 8/24, 0/24. Codex GPT-6.1-Sol medium effort: 5/24, 6/24, 0/24." src="docs/results-light.svg">
+</picture>
+
+Per project (two rounds, four agent setups, 648 runs; the incomplete first Codex round is in the paper):
 
 ![Per-fixture matrix: api-stability and audit-retention break under prose and the plain hook and never under agent-pace or the ownership notice; the other four projects never break.](docs/fixture_matrix.png)
 
