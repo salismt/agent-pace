@@ -144,7 +144,12 @@ def main():
     ap.add_argument("--figs", default="")
     a = ap.parse_args()
     runs = load(a.runs)
-    s = summary(runs)
+    # one section per condition (agent/model); conditions are never pooled (PREREGISTRATION.md, changes 7 and 11)
+    conds = sorted({(r["agent"], r["model"]) for r in runs})
+    s = ("# PromiseBench results by condition\n\nFixture-level statistics are in `paper/results.tex` "
+         "(`export_tex.py`) and at github.com/salismt/promisebench.\n\n"
+         + "\n".join(summary([r for r in runs if (r["agent"], r["model"]) == c]).replace("# PromiseBench results", "# " + c[0] + (("/" + c[1]) if c[1] else ""), 1)
+                     for c in conds))
     (BENCH / "results" / "summary.md").write_text(s)
     print(s)
     if a.figs:

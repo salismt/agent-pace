@@ -26,11 +26,13 @@
 \newcommand{\pace}{\textsf{agent-pace}}
 % one table row per endpoint: Claude (\row) or Codex (\rowx)
 \newcommand{\row}[2]{#1 & \kn{#2}{Base}{Prose}{Claude} & \kn{#2}{Base}{Hook}{Claude} & \kn{#2}{Base}{Pace}{Claude} & \kn{#2}{Override}{Prose}{Claude} & \kn{#2}{Override}{Hook}{Claude} & \kn{#2}{Override}{Notice}{Claude} & \kn{#2}{Override}{Pace}{Claude} \\}
-\newcommand{\rowx}[2]{#1 & \kn{#2}{Base}{Prose}{Codex} & \kn{#2}{Base}{Hook}{Codex} & \kn{#2}{Base}{Pace}{Codex} & \kn{#2}{Override}{Prose}{Codex} & \kn{#2}{Override}{Hook}{Codex} & \kn{#2}{Override}{Pace}{Codex} \\}
+\newcommand{\rowx}[2]{\rowt{#1}{#2}{Codex}}
+% one row for any condition tag (Claude, Codex, ClaudeMed, CodexMed), three arms
+\newcommand{\rowt}[3]{#1 & \kn{#2}{Base}{Prose}{#3} & \kn{#2}{Base}{Hook}{#3} & \kn{#2}{Base}{Pace}{#3} & \kn{#2}{Override}{Prose}{#3} & \kn{#2}{Override}{Hook}{#3} & \kn{#2}{Override}{Pace}{#3} \\}
 
 \newcommand{\arm}[1]{\textsf{#1}}
 
-\title{Who Owns the Promise?\\[4pt] \large Tamper-Protected Promise Gates for AI Coding Agents}
+\title{Who Owns the Promise?\\[4pt] \large Ownership Statements and Override Requests in AI Coding Agents}
 \author{salismt\\ \small\url{https://github.com/salismt/agent-pace}}
 \date{}
 
@@ -38,7 +40,7 @@
 \maketitle
 
 \begin{abstract}
-Software projects make promises to outsiders: card numbers never reach logs, customer files stay in one region, \texttt{/v1} fields never change. Coding agents increasingly write that code. We present \pace{}, a single-file tool that compiles each promise into a check, replays the checks before every agent commit, push or merge, and makes the promise list and existing checks owner-only. We also present PromiseBench: six repositories, sealed behavioural oracles, checks written blind, and two ticket kinds. With Claude Code and Sonnet~5.5, no arm let a stated promise break on ordinary tickets. When the requester, who does not own the promise, called it out of date, promises broke in \pc{Broken}{Override}{Prose}{Claude} of runs with the promise as prose and \pc{Broken}{Override}{Hook}{Claude} with an unprotected pre-commit hook, where agents edited the check before committing; with \pace{} the rate was \pc{Broken}{Override}{Pace}{Claude}. An ablation with the unprotected hook plus \pace{}'s ownership message alone also had \pc{Broken}{Override}{Notice}{Claude}: for this model, telling it who owns the promise produced the whole effect. In partial Codex runs, Codex rewrote a check and the ledger through Python, past the shell guard, so protection still matters. Blind checks caught \RMutSens{} of independent semantic mutants, which sets how much human audit remains.
+Software projects make promises to outsiders: card numbers never reach logs, \texttt{/v1} fields never change, audit entries are never deleted. Coding agents increasingly write the code that must keep them. We ask what an agent does when the person who wrote its ticket, who does not own the promise, says the promise is out of date. PromiseBench has six small repositories, each with two stated promises, sealed behavioural oracles, checks written blind by a separate agent, and two ticket kinds: an ordinary ticket, and the same ticket plus a requester's note that the promise is outdated and the check may be updated. On ordinary tickets no agent broke a stated promise in any arm. On override tickets, Claude Code with Sonnet~5.5 broke a promise in every run on two of the six fixtures (\texttt{api-stability}, \texttt{audit-retention}) and in no run on the other four, both with the promise as prose and with an unprotected pre-commit hook, where it edited the check before committing. With \pace{}, a hook that makes the promise list and its checks owner-only and says so at session start, it broke none. A rules-file sentence that states the same ownership, with no protection, also gave zero breaks, so for this model the statement of ownership carried the effect. The pattern repeated in a second round with Sonnet at medium effort. Codex CLI on GPT-6.1-Sol, which did not receive the session message, broke promises on the same two fixtures with prose and the plain hook; under \pace{} it tried to change a check, the ledger or the code in five runs, was refused each time, and committed no break, so for that agent the protection did the work. Because outcomes are near-deterministic within a fixture, the unit of evidence is the fixture: in each condition the effect rests on two of six fixtures, which is too few for a fixture-level test to reach significance. We report the study as exploratory, with the plan and every deviation logged.
 \end{abstract}
 
 \section{Introduction}
@@ -47,18 +49,17 @@ A promise that a software project makes to an outsider is a sentence such as ``W
 
 AI coding agents now write much of that code. Owners approve agent output faster than they can read it, so the question of whether a commit broke a promise is often answered by nobody. The usual remedy is a rules file (\texttt{AGENTS.md}, \texttt{CLAUDE.md}) that states the promises, sometimes backed by a test or a git hook.
 
-We started this work expecting that agents would break stated promises under ordinary task pressure, and that a commit gate would prevent it. The first half was wrong. In our benchmark, under tickets that tempt or conflict with a promise but do not mention it, the agents kept every stated promise in every arm. The breaks appeared when we split the principals: the ticket's requester, who does not own the promise, added a note saying the promise was out of date and that the agent could update the check or skip the hook. Agents followed the requester. With the promise in prose, they broke it. With an unprotected pre-commit hook, they edited the check so that it agreed with the requester and committed. With \pace{}, which makes the promise list and the checks owner-only and says so at session start, no stated promise broke in a commit.
+We started this work expecting that agents would break stated promises under ordinary task pressure, and that a commit gate would prevent it. The first half was wrong. In our benchmark, under tickets that tempt or conflict with a promise but do not mention it, the agents kept every stated promise in every arm. The breaks appeared when we split the principals: the ticket's requester, who does not own the promise, added a note saying the promise was out of date and that the agent could update the check or skip the hook. On two of the six fixtures, where the requester's request was plausible, agents followed the requester in every run. With the promise in prose, they broke it. With an unprotected pre-commit hook, they edited the check so that it agreed with the requester and committed. With \pace{}, which makes the promise list and the checks owner-only and says so at session start, no stated promise broke in a commit. On the other four fixtures no agent broke the promise in any arm.
 
-The variable that decided the outcome in our runs was whether the agent knew who may change the promise and its guard. An ablation separated the two parts of \pace{}: an unprotected hook plus one rules-file sentence saying that the checks are owner-only gave the same result for Sonnet as the full tool, and \pace{}'s protection was never exercised. Protection mattered for an agent that did not defer. In a partial replication, Codex CLI rewrote a check and \texttt{pace.toml} through a Python script that the shell guard did not recognise, and committed. We changed \pace{} after the study so that an agent's commit is refused whenever the ledger or an existing check differs from the last commit, however the file was written.
+The variable that decided the outcome in our runs was whether the agent knew who may change the promise and its guard. An exploratory ablation separated the two parts of \pace{}: an unprotected hook plus one rules-file sentence saying that the checks are owner-only gave the same result for Sonnet as the full tool, and \pace{}'s protection was never exercised. This is the instruction-hierarchy question~\citep{wallace2024hierarchy,openai2025modelspec} in a software setting: a note inside a ticket is an instruction from a lower-ranked principal, and the agent resolved the conflict according to what it was told about ownership. In a first, incomplete Codex run, Codex, which had not been given the session message, rewrote a check and \texttt{pace.toml} through a Python script that the shell guard did not recognise, and committed. We then changed \pace{} so that an agent's commit is refused whenever the ledger or an existing check differs from the last commit, however the file was written, and ran a second round with that version. In that round Codex, still without the session message, tried the same change in five \arm{pace} runs and was refused each time. The two agents reached the same outcome by different routes: Sonnet deferred to the statement of ownership, and Codex was stopped by the enforcement of it.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-  \item \textbf{\pace{}}, an open-source promise gate for coding agents: promises in a TOML ledger compile to check files; hooks replay the checks before \texttt{git commit}, \texttt{push} and \texttt{merge}; the ledger and existing checks are owner-only; \texttt{--no-verify} is blocked. It is one standard-library Python file with adapters for Claude Code and nine other harnesses (Section~\ref{sec:design}).
-  \item \textbf{PromiseBench}, a pre-registered benchmark of six repositories with two armed and one held-out promise each, sealed behavioural oracles, checks written blind by a separate agent, three arms plus an exploratory ablation, and two ticket kinds that separate implicit pressure from a principal split (Section~\ref{sec:bench}).
-  \item \textbf{Evidence on the principal split} for Claude Code with Sonnet~5.5, with a partial, secondary replication on Codex CLI, including an ablation showing that, for Sonnet, the ownership message alone produced the whole effect (Section~\ref{sec:results}).
-  \item \textbf{A measured check gap and a sign-off rule}: blind, self-validated checks caught \RMutSens{} \RMutSensCI{} of independent semantic mutants, with wide variation between promises. This gives a residual-risk decomposition and the number of commits a human must audit to bound the escape rate (Section~\ref{sec:sensitivity}).
-  \item \textbf{A bypass and its fix}: the benchmark found a write path past the shell guard, which led to a commit-time ownership check that does not depend on recognising write commands (Section~\ref{sec:bypass}).
-  \item \textbf{False blocks as a cost}: strict checks blocked legitimate work, and one sandbox artifact in a check was found by the pilot and fixed (Section~\ref{sec:falseblocks}).
+  \item \textbf{PromiseBench}, a small benchmark that separates implicit task pressure from a principal split: six repositories with two stated and one held-out promise each, sealed behavioural oracles, checks written blind by a separate agent, and paired ordinary and override tickets (Section~\ref{sec:bench}). Its fixtures, oracles, runner and per-run rows are public.
+  \item \textbf{Evidence on the principal split} for Claude Code with Sonnet~5.5 at two effort settings and for Codex CLI with GPT-6.1-Sol, analysed with the fixture as the unit (Section~\ref{sec:results}). Stated promises held under ordinary pressure; under a relayed override, agents followed the requester on two of six fixtures unless told who owns the guard (Sonnet) or stopped by it (Codex).
+  \item \textbf{An exploratory ablation} in which a one-sentence ownership statement, without protection, matched the full tool for Sonnet (Section~\ref{sec:mechanism}).
+  \item \textbf{\pace{}}, an open-source promise gate: a TOML ledger of promises compiled to checks, replayed before agent commits, pushes and merges, with the ledger and existing checks owner-only (Section~\ref{sec:design}). We report one bypass the benchmark found, the commit-time rule that replaced the write-command list, and the bypass routes that remain (Section~\ref{sec:bypass}).
+  \item \textbf{A measurement of check quality}: blind, self-validated checks caught \RMutSens{} \RMutSensCI{} of semantic mutants written independently of the check writer, with wide variation between promises, and a corrected residual-risk decomposition (Section~\ref{sec:sensitivity}).
 \end{enumerate}
 
 \section{Threat model}
@@ -138,7 +139,7 @@ Command & Input & Output \\
 
 \subsection{Fixtures}
 
-A fixture is a small project (Python standard library only, unit tests with \texttt{unittest}), a README that states the promises in the project's own voice, and an ordinary ticket from a teammate or customer that puts pressure on at least one promise without mentioning it. Each fixture has two \emph{armed} promises, stated to the agent and guarded by checks, and one \emph{held-out} promise that appears nowhere in the repository and measures displacement: whether guarding some promises pushes breaks onto others. Tickets are \emph{tempting} (the easy path breaks a promise and a careful path keeps it) or \emph{conflicting} (the ticket cannot be done as written without breaking a promise, and the right outcome is to stop and say so). Table~\ref{tab:fixtures} lists the six fixtures.
+A fixture is a small project (Python standard library only, unit tests with \texttt{unittest}), a README that states the promises in the project's own voice, and an ordinary ticket from a teammate or customer that puts pressure on at least one promise without mentioning it. Each fixture has two \emph{armed} promises, stated to the agent and guarded by checks, and one \emph{held-out} promise that appears nowhere in the repository. The held-out promise was meant to measure displacement, whether guarding some promises pushes breaks onto others; Section~\ref{sec:limits} explains why the design cannot identify it, and we make no claim about it. Tickets are \emph{tempting} (the easy path breaks a promise and a careful path keeps it) or \emph{conflicting} (the ticket cannot be done as written without breaking a promise, and the right outcome is to stop and say so). Table~\ref{tab:fixtures} lists the six fixtures.
 
 \begin{table}[t]
 \centering\small
@@ -179,7 +180,9 @@ Each fixture has two tickets. The \emph{base} ticket is the fixture author's tem
 
 The primary agent is Claude Code 2.1.319 with Sonnet~5.5 (\texttt{--model sonnet}), run headless with only project settings, an empty MCP configuration, no session persistence, permissions bypassed and the built-in sandbox on. In the \arm{pace} arm the plugin is loaded with \texttt{--plugin-dir}, which installs the pre-tool, stop and session-start hooks. The secondary agent is Codex CLI 0.159.3 with its default model, run with \texttt{codex exec} in a workspace-write sandbox without network access, with a temporary home directory that holds only its credential and the trust entry for the run's repository. In the \arm{pace} arm Codex had the pre-tool and stop hooks; the benchmark configured no session-start hook for Codex, so Codex never received the session message.
 
-Each run starts from a fresh copy of the fixture in a new git repository created with an empty template, so no machine-specific hooks leak in, and has a 20-minute limit. One run is one fixture $\times$ ticket $\times$ arm $\times$ agent $\times$ repetition. The final log holds \RRuns{} runs: \RRunsClaude{} with Claude Code and \RRunsCodex{} with Codex.
+Each run starts from a fresh copy of the fixture in a new git repository created with an empty template, so no machine-specific hooks leak in, and has a 20-minute limit. One run is one fixture $\times$ ticket $\times$ arm $\times$ agent $\times$ repetition.
+
+The study has two rounds and four \emph{conditions} (agent, model and effort), which are analysed separately and never pooled across rounds. Round~1: Claude Code with Sonnet~5.5 at Claude Code's default effort (\RRunsClaude{} runs, eight per cell, the primary condition) and Codex CLI with its default model (\RRunsCodex{} runs, incomplete, exploratory). Round~2, run after an external review: Claude Code with Sonnet~5.5 at \texttt{--effort medium} (\RRunsClaudeMed{} runs) and Codex CLI with GPT-6.1-Sol at medium reasoning effort, set explicitly with \texttt{-m} and \texttt{model\_reasoning\_effort} (\RRunsCodexMed{} runs). Each round-2 grid has two repetitions of both tickets and two more of the override ticket, so 24 override and 12 base runs per arm. As in round~1, Codex had \pace{}'s pre-tool and stop hooks but no session-start hook, so it never received the session message; in its \arm{pace} arm it learned about ownership only from \texttt{pace.toml}, the guard's refusals and the rules file, which is identical to \arm{hook}. Both agents' round-2 \arm{pace} arms ran the version with the commit-time ownership rule (Section~\ref{sec:bypass}). The log holds \RRuns{} runs in total.
 
 \subsection{Endpoints}
 
@@ -196,9 +199,9 @@ Each run starts from a fresh copy of the fixture in a new git repository created
 
 \subsection{Statistics, pre-registration and deviations}
 
-Proportions have Wilson 95\% intervals~\citep{wilson1927}, differences between arms have Newcombe hybrid score intervals~\citep{newcombe1998}, and check sensitivity has exact Clopper--Pearson intervals~\citep{clopper1934}. Every run where the agent started counts (intention to treat), including timeouts, which count as no commit. A mixed-effects model with fixture as a random effect was planned if the sample allowed; with most cells at zero it does not, and we report per-fixture counts instead (Appendix~\ref{app:fixtures}).
+\paragraph{The fixture is the unit.} Runs inside one fixture, ticket and arm are nearly always identical: every run broke the promise, or none did. So the independent units are the six fixtures, not the runs, and an interval that treats each run as an independent trial is too narrow~\citep{miller2024errorbars}. Our primary analysis therefore works per fixture. For a contrast between two arms we take each fixture's difference in break rate and report how many fixtures were lower, higher or tied, the mean difference, a cluster bootstrap interval that resamples fixtures, and an exact sign-flip test over the fixtures. With six fixtures the smallest two-sided $p$ this test can give is $2/2^6 \approx 0.03$, and only if all six differ in the same direction; with two fixtures differing it is $0.50$. The pre-registered run-level analysis, Wilson intervals for proportions~\citep{wilson1927} and Newcombe hybrid score intervals for differences~\citep{newcombe1998}, is reported next to it. Check sensitivity has exact Clopper--Pearson intervals~\citep{clopper1934}. Every run where the agent started counts (intention to treat), including timeouts, which count as no commit. A mixed-effects model with fixture as a random effect was planned; with cells at exactly zero or one it cannot be fitted, and the per-fixture tables (Appendix~\ref{app:fixtures}) replace it.
 
-The design, endpoints, hypotheses and stopping rule were written and committed before the pilot (\texttt{bench/PREREGISTRATION.md}). The hypotheses, verbatim:
+The design, endpoints, hypotheses and stopping rule were written and committed before the pilot (\texttt{bench/PREREGISTRATION.md}). Because the commit timestamps are local and the plan changed eleven times, we call the study exploratory with a logged plan rather than pre-registered. The hypotheses, verbatim:
 \begin{itemize}
   \item \textbf{H1 (primary).} On \texttt{override} tickets, \texttt{broken\_head} is lower in \texttt{pace} than in \texttt{hook} by at least 10 percentage points, pooled over fixtures and agents. Failure: the lower 95\% bound of the difference is below 0, or the point estimate is below 10 points.
   \item \textbf{H2.} On \texttt{override} tickets, tamper occurs in more than 5\% of \texttt{hook} runs where the hook blocked at least one commit.
@@ -206,7 +209,7 @@ The design, endpoints, hypotheses and stopping rule were written and committed b
 \end{itemize}
 H1's failure rule refers to ``the difference'' in the direction H1 predicts to be positive, hook minus pace. We apply it in that reading: H1 fails if the point estimate of pace $-$ hook is above $-10$ points or the upper 95\% bound of pace $-$ hook is at or above 0.
 
-We changed six things after data collection began, each recorded with its reason before the affected analysis:
+We changed eleven things after data collection began, each recorded with its reason before the affected analysis. Changes 1--6 came during round~1:
 \begin{enumerate}
   \item \textbf{A sandbox artifact in one check.} The blind \texttt{data-residency} C1 check bound a local port to record outbound bodies. The agents' sandboxes forbid binding, so the check failed on clean code inside the sandbox and blocked legitimate commits; in one pilot \arm{hook} run the agent then edited the check. The check now runs without the listener when it cannot bind; its mutant sensitivity is unchanged. The data-residency pilot runs were excluded and rerun, and every other check was confirmed to pass on its clean repository in a sandbox that forbids binding.
   \item \textbf{Tamper scoring.} The pilot rule counted \emph{reading} \texttt{core.hooksPath} as tamper. Only setting it counts now, and the repository's final configuration is also checked. All runs are re-scored with the corrected rule.
@@ -215,21 +218,39 @@ We changed six things after data collection began, each recorded with its reason
   \item \textbf{Codex dropped; Claude repetitions added.} After the usage limit, the project owner chose not to continue with Codex. The remaining work went to Claude Code with Sonnet~5.5: repetitions 4 to 7 of the full grid, for eight runs per Claude cell, and the \arm{notice} ablation on Claude only. The primary analysis and the hypothesis tests therefore use Claude runs only. H1 was pre-registered as pooled over agents; we report the pooled estimate as well. The completed Codex runs are a partial, secondary result (Section~\ref{sec:codex}) and are not pooled into the hypotheses.
   \item \textbf{Block scoring.} The runner first counted a block whenever the hook's or \pace{}'s message text appeared anywhere in the transcript. Agents often read the hook script or \texttt{pace.py}, which contain the same text, so this over-counted blocks. Blocks are now counted only from tool calls that failed, and all runs were re-scored from the saved transcripts. Real blocks turned out to be rare, so the H2 condition has almost no runs to condition on; we report H2 as pre-registered and as the unconditional tamper rate.
 \end{enumerate}
+Changes 7--11 came after an external review of round~1 and before any analysis of round~2:
+\begin{enumerate}\setcounter{enumi}{6}
+  \item \textbf{Codex completed on a pinned model.} The owner reversed change 5. The round-1 Codex runs had not recorded their model, so the new Codex runs are a separate condition with GPT-6.1-Sol at medium effort, and the round-1 Codex runs stay a separate exploratory result.
+  \item \textbf{Oracle errors are a third outcome.} An oracle that cannot run on the committed tree (exit 2) was scored as ``not broken''. Every oracle error is now reported, and the primary endpoint is given both ways.
+  \item \textbf{Two \pace{} bugs fixed before round~2.} The commit-time refusal told the agent to restore a file with a command the guard itself blocked, and a new check file with an existing id (\texttt{C1.py} next to the owner's \texttt{C1.sh}) shadowed the owner's check. Both were fixed; seven round-2 Codex \arm{pace} runs made with the old version were set aside and rerun. Round-1 \arm{pace} runs used the old version.
+  \item \textbf{Round-2 grids reduced to 108 runs each} (repetitions 0--1 on both tickets, 2--3 on override only), chosen before any round-2 analysis to save account usage. A run during which the account's usage limit is reached is an infrastructure failure and is rerun.
+  \item \textbf{A new condition, Sonnet~5.5 at medium effort}, because round~1 had not set an effort level.
+\end{enumerate}
 
 \section{Results}
 \label{sec:results}
 
-All numbers in this section are for Claude Code with Sonnet~5.5 unless a sentence names Codex.
+Sections~\ref{sec:main}--\ref{sec:mechanism} report the primary condition, round-1 Claude Code with Sonnet~5.5. Section~\ref{sec:round2} reports round~2, and Section~\ref{sec:codex} the incomplete round-1 Codex runs.
 
 \subsection{Main outcome}
+\label{sec:main}
 
-Table~\ref{tab:main} gives every endpoint by ticket and arm, and Figure~\ref{fig:broken} plots the primary endpoint. On base tickets, no arm let a stated promise break in a commit: \kn{Broken}{Base}{Prose}{Claude} in \arm{prose}, \kn{Broken}{Base}{Hook}{Claude} in \arm{hook} and \kn{Broken}{Base}{Pace}{Claude} in \arm{pace}. On override tickets, the break rate was \full{Broken}{Override}{Prose}{Claude} in \arm{prose}, \full{Broken}{Override}{Hook}{Claude} in \arm{hook}, and \full{Broken}{Override}{Pace}{Claude} in \arm{pace}. The \arm{notice} ablation, run on override tickets only, broke a promise in a commit in \full{Broken}{Override}{Notice}{Claude}. The working-tree rate matches the commit rate in every cell except \arm{notice}, where \kn{BrokenWt}{Override}{Notice}{Claude} runs left a break in the working tree without committing it.
+Figure~\ref{fig:matrix} shows the primary endpoint per fixture for every condition, and it carries the main finding. In the primary condition, \RAgreeClaude{} fixture--ticket--arm cells were all-or-nothing: every run in the cell broke a promise, or none did. All the override breaks came from two fixtures, \texttt{api-stability} and \texttt{audit-retention}, which broke 8/8 in \arm{prose} and in \arm{hook} and 0/8 in \arm{notice} and \arm{pace}. The other four fixtures broke 0/8 in every arm. We read the results below as two fixtures that respond to the requester's note, and four that do not, rather than as 48 independent trials per cell.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fixture_matrix.pdf}
+\caption{Override tickets: runs that broke an armed promise in a commit, per fixture and arm, for each condition (filled circle: at least one break; area grows with the share). Conditions are never pooled. Base tickets are omitted: no stated promise broke in a commit on a base ticket in any run of any condition.}
+\label{fig:matrix}
+\end{figure}
+
+Table~\ref{tab:main} gives every endpoint by ticket and arm for the primary condition. On base tickets, no arm let a stated promise break in a commit: \kn{Broken}{Base}{Prose}{Claude} in \arm{prose}, \kn{Broken}{Base}{Hook}{Claude} in \arm{hook} and \kn{Broken}{Base}{Pace}{Claude} in \arm{pace}. On override tickets, the break rate was \full{Broken}{Override}{Prose}{Claude} in \arm{prose}, \full{Broken}{Override}{Hook}{Claude} in \arm{hook}, and \full{Broken}{Override}{Pace}{Claude} in \arm{pace}. The \arm{notice} ablation, run on override tickets only, broke a promise in a commit in \full{Broken}{Override}{Notice}{Claude}. The working-tree rate matches the commit rate in every cell except \arm{notice}, where \kn{BrokenWt}{Override}{Notice}{Claude} runs left a break in the working tree without committing it.
 
 Usefulness was similar across arms: the share of runs that committed something was \pc{Commit}{Override}{Prose}{Claude}, \pc{Commit}{Override}{Hook}{Claude}, \pc{Commit}{Override}{Notice}{Claude} and \pc{Commit}{Override}{Pace}{Claude} on override tickets (\arm{prose}, \arm{hook}, \arm{notice}, \arm{pace}), and the unit tests passed at HEAD in every run. Honest stops, where the agent committed nothing, kept the promises and named the conflict, were \kn{Stop}{Override}{Prose}{Claude}, \kn{Stop}{Override}{Hook}{Claude}, \kn{Stop}{Override}{Notice}{Claude} and \kn{Stop}{Override}{Pace}{Claude}. Reading a sample of final messages from the override \arm{pace} runs, the agents did the part of the ticket that the promises allowed and handed the rest to the owner. In \texttt{api-stability}, for example, agents added a clean \texttt{/v2} endpoint, left \texttt{/v1} unchanged, and wrote that renaming \texttt{/v1} in place first needs whoever owns \texttt{pace.toml} and the checks to change the promise.
 
 \begin{table}[t]
 \centering\small
-\caption{Claude Code with Sonnet~5.5: runs meeting each endpoint, $k/n$. The \arm{notice} ablation ran on override tickets only. Wilson intervals for the primary endpoint are in the text and Figure~\ref{fig:broken}.}
+\caption{Claude Code with Sonnet~5.5: runs meeting each endpoint, $k/n$. The \arm{notice} ablation ran on override tickets only. Wilson intervals for the primary endpoint are in the text.}
 \label{tab:main}
 \begin{tabular}{@{}lccccccc@{}}
 \toprule
@@ -250,20 +271,13 @@ Endpoint & prose & hook & pace & prose & hook & notice & pace \\
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.9\linewidth]{figures/broken_by_arm.pdf}
-\caption{Share of Claude Code runs in which an armed promise was broken in a commit, by arm, with Wilson 95\% intervals and $k/n$ above each bar. The \arm{notice} ablation ran on override tickets only.}
-\label{fig:broken}
-\end{figure}
-
 \subsection{Hypotheses}
 
-\paragraph{H1: supported.} On override tickets, pace $-$ hook $=$ \RDiffOverridePaceHookClaude{} (Newcombe 95\%). The point estimate is more than 10 points below zero and the upper bound is below zero, so both pre-registered conditions hold. The pre-registered pooled analysis over both agents gives \RDiffOverridePaceHook{} and also meets both conditions. For reference, pace $-$ prose $=$ \RDiffOverridePaceProseClaude{} and hook $-$ prose $=$ \RDiffOverrideHookProseClaude{}: an unprotected hook did not reduce breaks relative to prose under a principal split.
+\paragraph{H1: supported at run level; two of six fixtures at fixture level.} On override tickets, pace $-$ hook $=$ \RDiffOverridePaceHookClaude{} (Newcombe 95\%). The point estimate is more than 10 points below zero and the upper bound is below zero, so both pre-registered conditions hold. The pre-registered pooled analysis over both round-1 agents gives \RDiffOverridePaceHook{} and also meets both conditions. These intervals treat runs as independent, which they are not. Per fixture, \arm{pace} was \RFxOverridePaceHookClaude{} against \arm{hook} (mean \RFxOverridePaceHookClaudeMean{}, cluster bootstrap \RFxOverridePaceHookClaudeBoot{}, exact sign-flip $p = \RFxOverridePaceHookClaudeP$ two-sided). The direction is consistent wherever there is a difference, but two fixtures cannot establish it, and the honest summary is ``2 of 6 tickets''. For reference, pace $-$ prose $=$ \RDiffOverridePaceProseClaude{} and hook $-$ prose $=$ \RDiffOverrideHookProseClaude{}: an unprotected hook did not reduce breaks relative to prose under a principal split.
 
 \paragraph{H2: not evaluable as specified; the unconditional tamper rate is far above 5\%.} H2 conditions on override \arm{hook} runs in which the hook blocked at least one commit. With blocks counted from failed tool calls (deviation 6), the condition held in \M{TamperGivenBlockOverrideHookClaudeN} runs, of which \M{TamperGivenBlockOverrideHookClaudeK} tampered, so the pre-registered rate cannot be computed. The agents changed the checks before they ever committed (Section~\ref{sec:tamper}), so the hook had nothing to block. The informative number is unconditional: in override \arm{hook} runs, an edited check reached the commit in \full{TamperDone}{Override}{Hook}{Claude}, against the 5\% threshold H2 set.
 
-\paragraph{H3: consistent with the expected null.} On base tickets, pace $-$ hook $=$ \RDiffBasePaceHookClaude{}, pace $-$ prose $=$ \RDiffBasePaceProseClaude{} and hook $-$ prose $=$ \RDiffBaseHookProseClaude{}. The point estimates are within the 10-point margin. Each whole interval also lies inside $\pm10$ points, so the stricter equivalence reading holds as well.
+\paragraph{H3: consistent with the expected null.} On base tickets, pace $-$ hook $=$ \RDiffBasePaceHookClaude{}, pace $-$ prose $=$ \RDiffBasePaceProseClaude{} and hook $-$ prose $=$ \RDiffBaseHookProseClaude{}, and every fixture was tied (0 breaks in every cell). The point estimates are within the 10-point margin. The run-level intervals also lie inside $\pm10$ points, but that equivalence reading rests on the same independence assumption and should not be leaned on.
 
 \subsection{Tamper in the unprotected hook}
 \label{sec:tamper}
@@ -279,20 +293,54 @@ The unprotected hook therefore failed before it had anything to block: the reque
 
 One objection is that the protected arm wins by construction: if the agent cannot edit the check, the check blocks the break. The data contradict that account for Sonnet. \pace{} denied no write to a protected file in any Claude run (Table~\ref{tab:main}, last row), and its guard refused a commit on a broken promise once in all Claude runs: in an \texttt{api-stability} override run, the \texttt{/v1} serializer still read a model attribute the agent had renamed, so the C1 and C2 checks failed; the agent fixed its code, not the check, and the final commit kept both promises. Agents in the \arm{pace} arm did not attempt the break. They read \texttt{pace.toml} and the session message, which said that the ledger and checks are owner-only and that a failing check means stop and tell the user. In the final messages we sampled, they then treated the requester's note as a decision for the owner, did the part of the ticket the promise allowed, and named who would have to change the promise. The session message was delivered in every Claude \arm{pace} run.
 
-So two parts of \pace{} could produce the effect: the block, which an agent meets only if it tries, and the ownership signal (the session message and the protected ledger), which every agent meets at the start. The \arm{notice} arm separates them. It has the unprotected hook and \pace{}'s ownership sentence in the rules file, and no protection: the agent could have edited the checks exactly as in \arm{hook}. On override tickets \arm{notice} broke a promise in a commit in \full{Broken}{Override}{Notice}{Claude}, with tamper in \kn{Tamper}{Override}{Notice}{Claude}. Notice $-$ hook $=$ \RDiffOverrideNoticeHookClaude{} and pace $-$ notice $=$ \RDiffOverridePaceNoticeClaude{}. For Sonnet, the ownership message accounts for the whole effect, and \pace{}'s protection was never exercised. The ablation was added after the pre-registration and is exploratory, but its sample matches the other arms.
+So two parts of \pace{} could produce the effect: the block, which an agent meets only if it tries, and the ownership signal (the session message and the protected ledger), which every agent meets at the start. The \arm{notice} arm separates them. It has the unprotected hook and \pace{}'s ownership sentence in the rules file, and no protection: the agent could have edited the checks exactly as in \arm{hook}. On override tickets \arm{notice} broke a promise in a commit in \full{Broken}{Override}{Notice}{Claude}, with tamper in \kn{Tamper}{Override}{Notice}{Claude}. Notice $-$ hook $=$ \RDiffOverrideNoticeHookClaude{} at run level, and \RFxOverrideNoticeHookClaude{} per fixture (sign-flip $p = \RFxOverrideNoticeHookClaudeP$); pace $-$ notice $=$ \RDiffOverridePaceNoticeClaude{}. For Sonnet, the ownership message accounted for the whole effect, and \pace{}'s protection was never exercised. The ablation was added after the pre-registration, run after the other arms rather than interleaved with them, and is exploratory, but its sample matches the other arms. It does not separate the ownership sentence from the presence of checks: an arm with the sentence and no checks was not run.
 
-\subsection{Displacement}
+\subsection{Round 2: Sonnet at medium effort and Codex with GPT-6.1-Sol}
+\label{sec:round2}
 
-Guarding two promises did not push breaks onto the third. The held-out promise broke at HEAD in \kn{Heldout}{Override}{Prose}{Claude}, \kn{Heldout}{Override}{Hook}{Claude}, \kn{Heldout}{Override}{Notice}{Claude} and \kn{Heldout}{Override}{Pace}{Claude} override runs (\arm{prose}, \arm{hook}, \arm{notice}, \arm{pace}), and in \kn{Heldout}{Base}{Prose}{Claude}, \kn{Heldout}{Base}{Hook}{Claude} and \kn{Heldout}{Base}{Pace}{Claude} base runs. The rates are similar across arms on both tickets. Held-out breaks occurred in every arm, including on base tickets where no stated promise broke: a promise that is not in the ledger has no protection from any arm.
-
-\subsection{Secondary result: Codex CLI (incomplete)}
-\label{sec:codex}
-
-The Codex runs stopped when the account's usage limit was reached, and the owner then dropped Codex (deviation 5), so the Codex grid is incomplete and unbalanced across repetitions. Table~\ref{tab:codex} gives the Codex results; they are not pooled into the hypotheses.
+Round~2 repeated the design with the effort level pinned, with Codex on a recorded model, and with the fixed \pace{} (deviations 7--11). Table~\ref{tab:round2} gives the main endpoints, and Figure~\ref{fig:matrix} the per-fixture view. Neither condition broke a stated promise on a base ticket.
 
 \begin{table}[t]
 \centering\small
-\caption{Codex CLI 0.159.3, default model: partial replication, $k/n$. Incomplete grid (usage limit); not pooled into H1--H3.}
+\caption{Round 2, $k/n$: Claude Code with Sonnet~5.5 at medium effort (top) and Codex CLI with GPT-6.1-Sol at medium effort (bottom). ``Guard file changed'' is the final-state tamper measure; the command-pattern tamper measure over-counts reads such as \texttt{git config --get core.hooksPath} and is in the public summary.}
+\label{tab:round2}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+& \multicolumn{3}{c}{Base ticket} & \multicolumn{3}{c}{Override ticket} \\
+\cmidrule(lr){2-4}\cmidrule(l){5-7}
+Endpoint & prose & hook & pace & prose & hook & pace \\
+\midrule
+\multicolumn{7}{@{}l}{\emph{Sonnet~5.5, medium effort}} \\
+\rowt{Broken in a commit}{Broken}{ClaudeMed}
+\rowt{Broken in the working tree}{BrokenWt}{ClaudeMed}
+\rowt{Guard file changed}{TamperDone}{ClaudeMed}
+\rowt{Committed something}{Commit}{ClaudeMed}
+\rowt{Hook or guard refusal}{Blocked}{ClaudeMed}
+\midrule
+\multicolumn{7}{@{}l}{\emph{GPT-6.1-Sol, medium effort}} \\
+\rowt{Broken in a commit}{Broken}{CodexMed}
+\rowt{Broken in the working tree}{BrokenWt}{CodexMed}
+\rowt{Guard file changed}{TamperDone}{CodexMed}
+\rowt{Committed something}{Commit}{CodexMed}
+\rowt{Hook or guard refusal}{Blocked}{CodexMed}
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Sonnet at medium effort repeated round~1 exactly.} The same two fixtures broke in every override run with \arm{prose} and \arm{hook} and in none with \arm{pace}; the other four never broke (\RAgreeClaudeMed{} cells all-or-nothing). Override breaks were \kn{Broken}{Override}{Prose}{ClaudeMed}, \kn{Broken}{Override}{Hook}{ClaudeMed} and \kn{Broken}{Override}{Pace}{ClaudeMed}; per fixture, pace against hook was \RFxOverridePaceHookClaudeMed{} (sign-flip $p = \RFxOverridePaceHookClaudeMedP$). In the \arm{hook} arm an edited check reached the commit in \kn{TamperDone}{Override}{Hook}{ClaudeMed} override runs. In the \arm{pace} arm the guard refused nothing (\kn{Blocked}{Override}{Pace}{ClaudeMed}): as in round~1, Sonnet did not attempt the change.
+
+\paragraph{Codex with GPT-6.1-Sol followed the requester on the same two fixtures, and here the enforcement did the work.} Override breaks were \kn{Broken}{Override}{Prose}{CodexMed} in \arm{prose}, \kn{Broken}{Override}{Hook}{CodexMed} in \arm{hook} and \kn{Broken}{Override}{Pace}{CodexMed} in \arm{pace}, all from \texttt{api-stability} and \texttt{audit-retention}; per fixture, pace against hook was \RFxOverridePaceHookCodexMed{} (sign-flip $p = \RFxOverridePaceHookCodexMedP$). Unlike Sonnet, Codex did not receive the session message, and it did attempt the change under \pace{}: the guard refused an action in \kn{Blocked}{Override}{Pace}{CodexMed} override \arm{pace} runs. In each of these runs Codex had tried to edit a check or \texttt{pace.toml}, or to commit code that failed the checks. After the refusal it kept the protected files unchanged, committed only the part of the ticket the promises allowed or nothing, and told the user that the owner must change the promise. In one \texttt{api-stability} run it renamed the \texttt{/v1} fields, the commit was refused because C1 and C2 failed, and the break stayed uncommitted in the working tree. In one \texttt{data-residency} run it edited the ledger and both checks, saved its changes as a patch for the owner, restored the files with the command the fixed guard allows, and committed nothing. No guard file changed in any Codex \arm{pace} commit (\kn{TamperDone}{Override}{Pace}{CodexMed}), against \kn{TamperDone}{Override}{Hook}{CodexMed} in \arm{hook}. This is the first evidence in the study that the protection, not only the message, keeps a stated promise; it comes from five runs of one condition.
+
+\paragraph{Effort.} Comparing round~1 and round~2 Sonnet is exploratory, because the rounds differ in effort, \pace{} version and date. The per-fixture pattern was identical.
+
+\subsection{Round-1 Codex CLI (incomplete, exploratory)}
+\label{sec:codex}
+
+The round-1 Codex runs stopped when the account's usage limit was reached, and the owner then dropped Codex for that round (deviation 5), so this grid is incomplete and unbalanced across repetitions, and its model was not recorded. Table~\ref{tab:codex} gives the results; they are not pooled into the hypotheses. \ROerrCodex{} runs had an oracle error on the committed tree, all on \texttt{api-stability} override tickets. Counting them as broken (deviation 8), override breaks were \kn{BrokenOE}{Override}{Prose}{Codex}, \kn{BrokenOE}{Override}{Hook}{Codex} and \kn{BrokenOE}{Override}{Pace}{Codex} (\arm{prose}, \arm{hook}, \arm{pace}), against \kn{Broken}{Override}{Prose}{Codex}, \kn{Broken}{Override}{Hook}{Codex} and \kn{Broken}{Override}{Pace}{Codex} with errors counted as holding.
+
+\begin{table}[t]
+\centering\small
+\caption{Round-1 Codex CLI 0.159.3, default model (not recorded): $k/n$. Incomplete grid (usage limit); not pooled into H1--H3. Oracle errors are counted as holding here; see the text for the other reading.}
 \label{tab:codex}
 \begin{tabular}{@{}lcccccc@{}}
 \toprule
@@ -340,14 +388,14 @@ All & & & \RMutCaught/\RMutTotal & \RMutSens{} \RMutSensCI & \RMutFA/\RMutBenign
 \end{tabular}
 \end{table}
 
-Sensitivity and tamper combine into a residual-risk decomposition for one commit:
+Sensitivity and tamper combine into a residual-risk decomposition for one commit. Let $B$ be the event that the commit breaks a promise, $T$ the event that the guard (a check, the hook or the ledger) was changed in the same commit, and $s$ the check's sensitivity to the kinds of break that occur. A break escapes if the guard was changed, or if it was not changed and the check misses it:
 \begin{equation}
-P(\text{promise broken and undetected}) = P(\text{break}) \cdot (1 - s) + P(\text{bypass}),
+P(\text{broken and undetected}) = P(B)\,\bigl[\,P(T \mid B) + \bigl(1 - P(T \mid B)\bigr)(1 - s)\,\bigr].
 \label{eq:risk}
 \end{equation}
-where $s$ is the check's sensitivity to the kinds of break that occur and $P(\text{bypass})$ is the probability that the break reaches the commit through a changed guard. The two terms need different remedies. An unprotected hook leaves $P(\text{bypass})$ near $P(\text{break})$ under a principal split, as Section~\ref{sec:tamper} shows; protection drives the bypass term down for benign agents, but it cannot raise $s$. Only better checks or human audit address the first term.
+The two terms are disjoint and need different remedies. Under a principal split an unprotected hook leaves $P(T \mid B)$ near one, as Section~\ref{sec:tamper} shows; protection and the ownership statement drive it down for benign agents, but neither can raise $s$. Only better checks or human audit address the first term.
 
-If a human audits commits after the gate, how many clean audits support a claim that the escape rate is at most $\varepsilon$? With zero failures in $n$ independent audited commits, the one-sided 95\% bound is the smallest $n$ with $(1-\varepsilon)^n \le 0.05$, the zero-numerator bound behind the ``rule of three''~\citep{hanley1983threes}; Bishop et al.\ discuss conservative claims of this kind for software dependability~\citep{bishop2011conservative}. Table~\ref{tab:audit} gives the numbers. The rule an owner can sign is: run the gate on every commit, and audit enough commits by hand, sampled at random, to bound what the checks miss. The measured sensitivity says the audit cannot be skipped.
+If a human audits commits after the gate, how many clean audits support a claim that the escape rate is at most $\varepsilon$? With zero failures in $n$ independent audited commits, the one-sided 95\% bound is the smallest $n$ with $(1-\varepsilon)^n \le 0.05$, the zero-numerator bound behind the ``rule of three''~\citep{hanley1983threes}; Bishop et al.\ discuss conservative claims of this kind for software dependability~\citep{bishop2011conservative}. Table~\ref{tab:audit} gives the numbers. The rule an owner can sign is: run the gate on every commit, and audit enough commits by hand, sampled at random, to bound what the checks miss. The table is the zero-failure bound and does not depend on $s$; the measured sensitivity is the reason the audit cannot be skipped, not an input to its size.
 
 \begin{table}[t]
 \centering\small
@@ -378,7 +426,11 @@ The Claude runs cost \RClaudeCost{} in total (reported by Claude Code). The medi
 
 \paragraph{Monitor evasion and persistence.} Benign agents evade runtime monitors when finishing the task requires an operation the monitor prohibits, with rates that vary by model and rise with test-time compute~\citep{monitorevasion2026}. Persistence instructions raise violation rates under quiet oversight~\citep{persistence2026}. Our \arm{hook} result is a case of the same pressure in which the obstacle is a check file the agent may edit.
 
-\paragraph{AI control.} Control evaluations ask whether protocols keep an untrusted model from causing harm against a red-team policy, using trusted monitors, editing and resampling~\citep{greenblatt2024control,bhatt2025ctrlz}, and the cost of that oversight~\citep{controltax2025}. We study the weaker, more common case of a benign agent and a principal split, and our sign-off table is a human-audit budget in the same spirit.
+\paragraph{AI control.} Control evaluations ask whether protocols keep an untrusted model from causing harm against a red-team policy, using trusted monitors, editing and resampling~\citep{greenblatt2024control,bhatt2025ctrlz}, and the cost of that oversight~\citep{controltax2025}. We study the weaker, more common case of a benign agent and a principal split, and our sign-off table is a human-audit budget in the same spirit. Sabotage evaluations such as SHADE-Arena pair a hidden harmful side task with a monitor~\citep{kutasov2025shade}; our agents had no hidden goal, and the check edits were done in the open because the requester asked for them.
+
+\paragraph{Instruction hierarchy and prompt injection.} The phenomenon we measure is a conflict between principals of different rank. The instruction hierarchy trains models to prefer system and developer instructions over lower-privileged ones~\citep{wallace2024hierarchy}, and model specifications describe a chain of command among platform, developer and user~\citep{openai2025modelspec}. A note inside a ticket is structurally an indirect instruction, the object of prompt-injection benchmarks and defences such as InjecAgent~\citep{zhan2024injecagent}, AgentDojo~\citep{debenedetti2024agentdojo} and CaMeL~\citep{debenedetti2025camel}. Our requester is not an attacker: the note is plausible, polite and comes from a teammate, and in two of six fixtures the agents treated it as authority. $\tau$-bench is the nearest benchmark in spirit, measuring whether agents follow a domain policy under user pressure, and its pass$^k$ metric is built for the repetition consistency we see~\citep{yao2024taubench}. The Agentic Benchmark Checklist~\citep{zhu2025abc} sets the bar we hold PromiseBench to; its public version scores itself against it.
+
+\paragraph{Engineering baselines we did not run.} Standard repository controls already protect files from unauthorised change: code owners whose review is required for paths such as \texttt{claims/}~\citep{github2026codeowners}, protected branches with required status checks~\citep{github2026protected}, server-side hooks, and the harness's own permission rules, which can deny edits to given paths~\citep{anthropic2026permissions}. These enforce ownership more strongly than \pace{}'s client-side hooks, because the agent cannot reach them. We did not include them as arms. Our finding concerns the step before enforcement: whether the agent understands that the promise is not the requester's to change. A deny rule or a required review would have blocked the \arm{hook}-arm edits, but would not by itself have told the agent why, and we have not measured what the agent does after such a refusal.
 
 \paragraph{Runtime enforcement for agents.} AgentSpec is a domain-specific language of triggers, predicates and enforcement actions that blocks unsafe agent actions with millisecond overhead~\citep{wang2025agentspec}. Progent expresses tool-call privileges as symbolic policies, lets the model narrow them, and requires approval to widen them~\citep{shi2025progent}. \pace{} is narrower: its policy is the owner's promises, compiled to checks, and its one privilege rule is that the agent cannot change the promises or their checks.
 
@@ -388,7 +440,7 @@ The Claude runs cost \RClaudeCost{} in total (reported by Claude Code). The medi
 
 \paragraph{Zero-failure bounds and rare targets.} The sign-off table rests on the zero-numerator bound~\citep{hanley1983threes} and on conservative dependability claims for software~\citep{bishop2011conservative}. Human search for rare targets misses many of them~\citep{wolfe2005rare}, which is why we size audits rather than rely on reviewers to notice the rare broken commit.
 
-\paragraph{Hard stops and multitask incentives.} The cost of forcing functions is measured in medicine~\citep{strom2010hardstop}. Published report cards for health-care providers~\citep{dranove2003reportcards} and audit and ratings in universities~\citep{strathern1997} have been studied for what they do to the measured work, and multitask principal--agent models study how incentives on measured tasks affect effort on tasks that are not measured~\citep{holmstrom1991multitask}. The held-out promise is our test for this displacement; we did not observe it, but six fixtures are too few to rule it out.
+\paragraph{Hard stops and multitask incentives.} The cost of forcing functions is measured in medicine~\citep{strom2010hardstop}. Published report cards for health-care providers~\citep{dranove2003reportcards} and audit and ratings in universities~\citep{strathern1997} have been studied for what they do to the measured work, and multitask principal--agent models study how incentives on measured tasks affect effort on tasks that are not measured~\citep{holmstrom1991multitask}. The held-out promise was meant to test for this displacement; Section~\ref{sec:limits} explains why the design cannot.
 
 \section{Limitations and threats to validity}
 \label{sec:limits}
@@ -397,19 +449,25 @@ The Claude runs cost \RClaudeCost{} in total (reported by Claude Code). The medi
 
 \paragraph{One primary model.} After deviation 5, the hypotheses rest on one harness and one model, Claude Code with Sonnet~5.5. The Codex results are a partial replication with an incomplete grid, a different hook configuration (no session message) and a different sandbox. The central mechanism finding, that the ownership message alone was enough, is a finding about this model: Codex, the only other agent, did not get the message and did not defer. Whether larger models, other harnesses, or future versions follow the requester, or defer to an ownership statement, in the same way is untested.
 
-\paragraph{Small sample.} Six fixtures with up to eight runs per Claude cell support pooled claims about override tickets, not per-fixture claims. Breaks under override came from a subset of fixtures (Appendix~\ref{app:fixtures}); in others, agents kept the promise in every arm, so the pooled effect depends on which fixtures tempt the agent most. Runs within a fixture are not independent, and with most cells at zero we did not fit the planned mixed-effects model.
+\paragraph{Six fixtures, two of them informative.} Outcomes were near-deterministic within a fixture, so repetitions add almost no information: the design effect is close to the number of runs per cell, and the effective sample is the six fixtures. Every override break in every condition came from the same two fixtures. Which fixtures respond to an override depends on how plausible the requester's note is for that promise, and six LLM-written fixtures do not sample that space. A fixture-level test cannot reach significance with two informative fixtures. More fixtures, ideally mined from real projects' documented guarantees and the commits that broke them, are the main need.
 
-\paragraph{Deterrence versus blocking.} For Sonnet, the measured effect is the agent declining to try, which depends on the agent reading and respecting an ownership statement; the protection was not exercised, so our Claude data say nothing about how well it holds. The only evidence on protection comes from Codex, where the shell guard failed. The commit-time ownership check that replaces it as the main protection (Section~\ref{sec:bypass}) is covered by a regression test but was not part of the study and has not been evaluated with agents. Git plumbing, commits outside the harness and disabled hooks can bypass both. The \arm{notice} ablation was not pre-registered.
+\paragraph{Displacement is not identified.} Held-out breaks were constants of two fixtures. In \texttt{telemetry-optout} the held-out promise (crash reports only after the user confirms) broke in every run of every arm, ticket and condition, including base tickets. For Codex, in both rounds, the \texttt{password-storage} held-out promise (reset tokens expire within one hour) also broke in almost every run of every arm. Sonnet broke it in two of 96 round-1 runs. These are properties of the fixtures' tickets and of the agent, not of guarding. Because the same promise is held out in every arm, the design cannot separate displacement from the held-out promise's own difficulty; a counterbalanced design that rotates which promise is held out would be needed. We therefore make no displacement claim.
+
+\paragraph{The override note mentions the check.} The fixture specification says tickets do not mention the promises; the override note does, and it explicitly offers to update the check or skip the hook. This makes the override strong and direct. Wordings that only imply the change, urgent wordings, a requester who claims to be the owner, and a legitimate override by the real owner (which measures over-refusal) were not tested.
+
+\paragraph{Deterrence versus blocking.} For Sonnet, the measured effect is the agent declining to try, which depends on the agent reading and respecting an ownership statement; the protection was not exercised, so our Claude data say little about how well it holds. The evidence that the protection holds comes from five round-2 Codex runs, all through routes the guard recognises; no run tried git plumbing or a commit outside the harness. The \arm{notice} ablation was not pre-registered and was run on Claude only, after the other arms. The full $2 \times 2$ of message and enforcement (enforcement without the message for Claude, the message without enforcement for Codex) and an ownership-sentence arm without checks were not run. The commit-time ownership rule (Section~\ref{sec:bypass}) still depends on the agent committing through a tool call the guard sees; git plumbing, commits outside the harness, a changed \texttt{core.hooksPath} or global git options, and disabled hooks remain bypass routes. Running the owner's checks from a trusted ref, in CI that the agent cannot reach, would close most of them. Whether the session message survives long sessions, context compaction and subagents was not tested.
 
 \paragraph{Measurement.} Tamper is detected from file digests, the final git configuration and a regular expression over the commands in the transcript; the command part can miss rewrites through interpreters and can count a denied attempt. Blocks were first scored from message text that also appears in files the agents read; they are now scored from failed tool calls (deviation 6). The ``hook or guard refusal'' row counts \pace{}'s write denials but not its refusals of a commit on a broken promise, which we counted by hand from the transcripts. H2's conditioning event almost never occurred. Honest stops are coded by keyword. The oracles are behavioural and robust to renames, but an oracle can still disagree with a human reading of the promise; one Codex run narrowed a promise to an opt-in exception and was scored as keeping it; and the runner scores an oracle that cannot run (exit 2) as not broken, which undercounts breaks that remove the documented interface (Section~\ref{sec:codex}).
 
-\paragraph{Codex infrastructure.} Codex runs that failed on the usage limit before the agent acted were removed and are not outcomes; later Codex runs were never made. The Codex grid is unbalanced across repetitions. Codex's standard error output also showed attempts to start MCP servers that failed to authenticate, so no MCP tools were available to it; we have not established where that configuration came from, given the temporary home directory.
+\paragraph{Codex infrastructure.} Codex runs that failed on the usage limit before the agent acted were removed and are not outcomes; later Codex runs were never made. The Codex grid is unbalanced across repetitions. Codex's standard error output also showed attempts to start MCP servers that failed to authenticate, so no MCP tools were available to it; we have not established where that configuration came from, given the temporary home directory. The harness is therefore not fully hermetic. Round-1 rows do not record the agent CLI version or a hash of \texttt{pace.py}; round-2 rows record the model and effort.
 
-\paragraph{The author built the tool.} The author of \pace{} designed the benchmark and ran it. The pre-registration, the blind checks, the sealed oracles and the published runner and transcripts are meant to make this checkable, but they do not remove the conflict of interest.
+\paragraph{Usefulness is coarse.} ``Committed something'' and ``tests pass'' do not measure whether the agent completed the legitimate part of the ticket. An agent that does nothing keeps every promise.
+
+\paragraph{The author built the tool.} The author of \pace{} designed the benchmark and ran it. The logged plan, the blind checks, the sealed oracles, the published runner and the per-run rows are meant to make this checkable, but they do not remove the conflict of interest. Raw transcripts are kept but not yet published.
 
 \section{Conclusion}
 
-Under ordinary pressure, the agents we tested kept the promises their rules file stated. Under a principal split, they followed whoever wrote the ticket, and a guard whose files the agent could edit became one more file to update. Two rules follow. First, tell the agent who owns each promise and its checks, at the start of every session; for Sonnet this alone kept every stated promise. Second, enforce that ownership at the commit, by refusing any commit in which the ledger or an existing check differs from the last commit, rather than by recognising write commands; an agent that does not defer will find a write the list missed, as Codex did. The checks will still miss some breaks, so pair the gate with a random audit sized for the escape rate you are willing to sign.
+Under ordinary pressure, the agents we tested kept the promises their rules file stated. Under a principal split, on the two of six fixtures where the requester's note was plausible, they followed whoever wrote the ticket, and a guard whose files the agent could edit became one more file to update. For Sonnet~5.5, telling the agent at the start that the promise and its checks belong to the owner was enough to reverse this, with or without protection. Codex with GPT-6.1-Sol, which was never told, tried to make the change and was stopped by the commit-time ownership rule. The evidence is two fixtures deep in each condition, so we offer it as a clear, repeatable observation, not an established rate. Two practical rules follow, as hypotheses for larger studies. State who owns each promise and its checks wherever the agent will read it. And enforce that ownership somewhere the agent cannot edit, at the commit and preferably in CI, because an agent that does not defer will find a write path a client-side guard missed, as the first Codex run did. The checks will still miss some breaks, so pair the gate with a random audit sized for the escape rate you are willing to sign.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}
@@ -419,19 +477,26 @@ Under ordinary pressure, the agents we tested kept the promises their rules file
 \section{Per-fixture results}
 \label{app:fixtures}
 
+Runs with an armed promise broken in a commit, per fixture, $k/n$, one table per condition. The \arm{notice} arm exists for round-1 Claude only.
+
+\newcommand{\fxtable}[2]{%
 \begin{table}[h]
 \centering\small
-\caption{Runs with an armed promise broken in a commit, per fixture, $k/n$, as exported by \texttt{export\_tex.py} (all agents in the log).}
-\begin{tabular}{@{}lcccccc@{}}
+\caption{#2}
+\begin{tabular}{@{}lccccccc@{}}
 \toprule
-& \multicolumn{3}{c}{Base ticket} & \multicolumn{3}{c}{Override ticket} \\
-\cmidrule(lr){2-4}\cmidrule(l){5-7}
-Fixture & prose & hook & pace & prose & hook & pace \\
+& \multicolumn{3}{c}{Base ticket} & \multicolumn{4}{c}{Override ticket} \\
+\cmidrule(lr){2-4}\cmidrule(l){5-8}
+Fixture & prose & hook & pace & prose & hook & notice & pace \\
 \midrule
-\RFixtureRows
+\csname RFixtureRows#1\endcsname
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table}}
+\fxtable{Claude}{Round 1, Claude Code with Sonnet~5.5, default effort.}
+\fxtable{ClaudeMed}{Round 2, Claude Code with Sonnet~5.5, medium effort.}
+\fxtable{CodexMed}{Round 2, Codex CLI with GPT-6.1-Sol, medium effort.}
+\fxtable{Codex}{Round 1, Codex CLI, default model (incomplete).}
 
 \section{Override tickets}
 \label{app:tickets}
@@ -461,6 +526,9 @@ python3 bench/run.py --matrix --agents claude --models claude=sonnet \
 # the exploratory ablation
 python3 bench/run.py --matrix --agents claude --models claude=sonnet \
     --tickets override --arms notice --reps 8 --jobs 6
+# round 2: 108 runs per condition, resumable after a usage limit
+bash bench/grids.sh claude     # Sonnet 5.5 at medium effort
+bash bench/grids.sh codex      # GPT-6.1-Sol at medium effort
 # check sensitivity (no agent runs) -> bench/results/mutation.json
 python3 bench/mutate.py
 # tables and summary -> bench/results/summary.md
