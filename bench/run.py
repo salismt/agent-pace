@@ -23,6 +23,8 @@ PACE = ROOT / "plugin" / "scripts" / "pace.py"
 RESULTS = BENCH / "results"
 TIMEOUT = 20 * 60
 HOOK_LOG = "PROMISEBENCH_HOOK_LOG"
+QUOTA = re.compile(r"hit your (usage )?limit|usage limit reached|rate limit exceeded|limit reached", re.I)
+QUOTA_HIT = set()  # agents whose account quota ran out: skip their remaining runs, rerun the same command later
 
 
 def load_toml(p):
@@ -117,8 +119,9 @@ def agent_cmd(agent, model, ticket, arm, work):
                "--mcp-config", '{"mcpServers":{}}', "--no-session-persistence", "--permission-mode", "bypassPermissions",
                "--output-format", "stream-json", "--verbose",
                "--settings", json.dumps({"sandbox": {"enabled": True, "autoAllowBashIfSandboxed": True}})]
-        if model:
-            cmd += ["--model", model]
+        if model:  # "sonnet@medium" pins the model and its effort level
+            m, _, effort = model.partition("@")
+            cmd += ["--model", m] + (["--effort", effort] if effort else [])
         if arm == "pace":
             cmd += ["--plugin-dir", str(ROOT / "plugin")]
         return cmd
@@ -128,8 +131,9 @@ def agent_cmd(agent, model, ticket, arm, work):
                "-c", f'sandbox_workspace_write.writable_roots=["{Path(work).resolve()}/.git"]']  # .git is read-only by default
         if arm == "pace":
             cmd += ["--dangerously-bypass-hook-trust"]
-        if model:
-            cmd += ["-m", model]
+        if model:  # "gpt-6.1-sol@medium" pins the model and its reasoning effort
+            m, _, effort = model.partition("@")
+            cmd += ["-m", m] + (["-c", f'model_reasoning_effort="{effort}"'] if effort else [])
         return cmd + [ticket]
     raise SystemExit(f"unknown agent {agent}")
 
@@ -235,6 +239,8 @@ def blocks_from_transcript(out, err, agent):
 
 
 def run_one(fixture, arm, agent, rep, model, word_cap=0, keep=False, ticket_kind="base"):
+    if agent in QUOTA_HIT:
+        raise RuntimeError(f"{agent}: quota exhausted earlier in this matrix, skipped (not recorded)")
     fx = BENCH / "fixtures" / fixture
     run_id = f"{fixture}.{ticket_kind}.{arm}.{agent}{'-' + model if model else ''}.r{rep}"
     tmp = Path(tempfile.mkdtemp(prefix="pb-"))
@@ -268,10 +274,13 @@ def run_one(fixture, arm, agent, rep, model, word_cap=0, keep=False, ticket_kind
     if err.strip():
         (RESULTS / "raw" / f"{run_id}.stderr").write_text(err[-20000:])
     cmds, final, cost, turns = transcript_facts(out.splitlines(), agent)
-    if re.search(r"hit your usage limit|usage limit reached|rate limit exceeded", out + err, re.I) and not cmds:
-        shutil.rmtree(tmp, ignore_errors=True)  # the agent never ran: infrastructure failure, not an outcome
+    if QUOTA.search(out[-5000:] + err[-5000:]):  # quota ran out before or during the run: not an outcome, rerun it
+        QUOTA_HIT.add(agent)
+        shutil.rmtree(tmp, ignore_errors=True)
+        (RESULTS / "raw" / f"{run_id}.jsonl").rename(RESULTS / "raw" / f"{run_id}.quota-{int(t0)}.jsonl")
         with open(RESULTS / "infra-failed.jsonl", "a") as f:
-            f.write(json.dumps({"run": run_id, "reason": "usage limit", "seconds": round(time.time() - t0, 1)}) + "\n")
+            f.write(json.dumps({"run": run_id, "reason": "usage limit", "agent_started": bool(cmds),
+                                "seconds": round(time.time() - t0, 1)}) + "\n")
         raise RuntimeError(f"{run_id}: usage limit, not recorded")
 
     commits = int(git(work, "rev-list", "--count", "HEAD").stdout.strip()) - 1
