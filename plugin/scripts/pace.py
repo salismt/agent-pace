@@ -27,6 +27,7 @@ WRITE = re.compile(
     r"|\b(sed|perl)\s+-\w*i" + _P +
     r"|\bgit\s+(checkout|restore|rm|mv)\b" + _P +
     r"|open\([^)]*(pace\.toml|claims/checks)[^)]*['\"][wax+]")
+RESTORE = re.compile(r"\bgit\s+checkout\s+HEAD\s+--\s[^|;&>]*")  # the restore pace tells agents to run
 NO_VERIFY = re.compile(r"\bgit\s+commit\b[^|;&]*(--no-verify|\s-\w*n)")
 SHELL_TOOLS = {"Bash", "Shell", "bash", "exec", "run_shell_command", "run_commands"}  # Claude/Codex, Cursor, Copilot, Devin, Gemini, Cline
 SHELL_NAME = re.compile(r"bash|shell|exec|terminal|command|run_", re.I)  # unknown harnesses: name looks like a shell
@@ -141,10 +142,11 @@ def deny(msg):
 
 def check_cmd(r, c):
     """argv for claims/checks/<id>.sh|.py; checks are files only, so every one is reviewable in git."""
-    for p in sorted((r / "claims" / "checks").glob(f"{c['id']}.*")):
-        if p.suffix in (".sh", ".py"):
-            return ["bash" if p.suffix == ".sh" else sys.executable, str(p)]
-    return None
+    found = [p for p in sorted((r / "claims" / "checks").glob(f"{c['id']}.*")) if p.suffix in (".sh", ".py")]
+    if len(found) > 1:  # a second file must not shadow the owner's check
+        return [sys.executable, "-c", f"import sys; sys.exit('two check files for {c['id']}: "
+                f"{', '.join(p.name for p in found)}; the owner keeps one')"]
+    return ["bash" if found[0].suffix == ".sh" else sys.executable, str(found[0])] if found else None
 
 
 def replay(r, claims):
@@ -210,13 +212,14 @@ def guard(r, cfg, claims, ev):
             p = (r / f.strip()).resolve()
             if p == ledger:
                 return deny("pace: pace.toml is owner-only. Show the change as a TOML block for the user to paste.")
-            if checks in p.parents and p.exists():
+            if checks in p.parents and (p.exists() or any(q.stem == p.stem and q.suffix in (".sh", ".py")
+                                                          for q in checks.glob("*"))):
                 return deny(f"pace: {p.name} is an existing claim check. Never change a check to make it pass; "
                             "tell the user which change broke it.")
         return 0
     if claims and NO_VERIFY.search(cmd):
         return deny("pace: --no-verify skips the claims ledger. Commit without it.")
-    if WRITE.search(cmd):
+    if WRITE.search(RESTORE.sub("", cmd)):
         return deny("pace: this command may write to pace.toml or claims/checks/. Read them only; "
                     "create a new check file with the Write tool.")
     if not claims or not GATE.search(cmd):

@@ -227,6 +227,17 @@ assert run(cr, ["guard"], bash("git push"))[0] == 2
 subprocess.run(["git", "checkout", "-q", "HEAD", "--", "claims/checks/C1.sh"], cwd=cr, check=True)
 (cr / "claims" / "checks" / "C2.sh").write_text("exit 0\n")  # a new check is allowed
 assert run(cr, ["guard"], bash("git commit -am x"))[0] == 0
+# the restore the deny message suggests is allowed; other refs and chained writes are not
+assert run(cr, ["guard"], bash("git checkout HEAD -- claims/checks/C1.sh pace.toml"))[0] == 0
+for c in ["git checkout HEAD~1 -- claims/checks/C1.sh", "git checkout HEAD -- x && echo y > pace.toml",
+          "git checkout HEAD -- pace.toml > claims/checks/C1.sh"]:
+    assert run(cr, ["guard"], bash(c))[0] == 2, c
+# a second file for an existing check id must not shadow the owner's check
+assert run(cr, ["guard"], edit(cr / "claims/checks/C1.py"))[0] == 2
+(cr / "claims" / "checks" / "C1.py").write_text("raise SystemExit(0)\n")  # written by a script instead
+code, _, err = run(cr, ["guard"], bash("git commit -am x"))
+assert code == 2 and "two check files for C1" in err, err
+(cr / "claims" / "checks" / "C1.py").unlink()
 
 # fail open: broken pace.toml never blocks, error is logged
 (o / "pace.toml").write_text("not = [valid")
